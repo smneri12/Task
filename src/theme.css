@@ -1,0 +1,13 @@
+/* Additional polished theme overrides */
+.sidebar {
+  backdrop-filter: blur(6px);
+}
+
+.note-card {
+  transition: 0.2s ease;
+}
+
+.note-card:hover {
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.07);
+}
