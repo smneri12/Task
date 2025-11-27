@@ -37,7 +37,8 @@ export default function App() {
         <Route element={user ? <MainLayout user={user} /> : <Navigate to="/login" />}>
             
             {/* Renders the production pages */}
-            <Route path="/notes" element={<NotesPage user={user} />} />
+            {/* 🟢 Ensures the user prop is passed to NotesPage */}
+            <Route path="/notes" element={<NotesPage user={user} />} /> 
             <Route path="/tasks" element={<TasksPage user={user} />} />
 
         </Route>

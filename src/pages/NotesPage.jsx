@@ -1,30 +1,20 @@
-// src/pages/NotesPage.jsx (CLEANED UP FOR LAYOUT)
+// src/pages/NotesPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faSearch,
-  faPlus,
-  faDownload,
-  faTrashAlt,
-  faPen,
-  faBold,
-  faItalic,
-  faListUl,
-  faListOl,
-  faHighlighter,
-  faCrop,
-  faHeading,
-  faPalette,
-  faEraser,
-  faArrowLeft,
-  faEllipsisV,
+  faSearch, faPlus, faDownload, faTrashAlt, faPen, faBold, faItalic,
+  faListUl, faListOl, faHighlighter, faCrop, faHeading, faPalette,
+  faEraser, faArrowLeft, faEllipsisV,
 } from "@fortawesome/free-solid-svg-icons";
-import { fetchNotes, createNote, updateNoteFirestore, deleteNoteFirestore } from "../services/notes";
-// Removed signOut and auth imports, as Sign Out is now handled in Sidebar.jsx
+import { 
+  fetchNotes, 
+  createNote, 
+  updateNoteFirestore, 
+  deleteNoteFirestore 
+} from "../services/notes";
 import "../index.css"; 
 
-// --- STATIC DATA EXTRACTED FROM NotesPage.jsx ---
-// NOTE: Folder/Navigation options are now mostly managed in Sidebar.jsx/MainLayout.jsx
+// --- STATIC DATA ---
 const folderOptions = [
   { key: "Inbox", label: "Inbox" },
   { key: "School", label: "School" },
@@ -60,12 +50,12 @@ const headingOptions = [
 ];
 
 
-export default function NotesPage() {
+// FIX 1: Component accepts the 'user' prop
+export default function NotesPage({ user }) { 
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
-  // Removed activeFolder and dropdown state, as it's now managed in MainLayout
-  const [activeFolder] = useState("Inbox"); // Keep a default for filtering/creation logic
+  const [activeFolder] = useState("Inbox"); 
   
   const [mainSearch, setMainSearch] = useState("");
   const [selectedNoteId, setSelectedNoteId] = useState(null);
@@ -73,17 +63,21 @@ export default function NotesPage() {
   const [formatting, setFormatting] = useState(defaultFormatting);
   const [saving, setSaving] = useState(false);
   
-  // NOTE: sidebarSearch removed, as it's now an independent component in Sidebar.jsx
-
+  // --- Data Loading ---
   useEffect(() => {
+    if (!user) {
+        setLoading(false);
+        setNotes([]);
+        return;
+    } 
+
     const load = async () => {
       setLoading(true);
       try {
-        // Fetch notes logic remains the same
         const data = await fetchNotes();
         setNotes(data);
       } catch (err) {
-        console.error(err);
+        console.error("Error loading notes:", err);
         setStatus("Could not load notes.");
       } finally {
         setLoading(false);
@@ -91,8 +85,9 @@ export default function NotesPage() {
     };
 
     load();
-  }, []);
+  }, [user]); 
 
+  // --- Handlers ---
   const openNote = (noteId) => {
     const note = notes.find((n) => n.id === noteId);
     if (!note) return;
@@ -112,6 +107,12 @@ export default function NotesPage() {
   };
 
   const handleCreate = async () => {
+    // Check for user existence
+    if (!user || !user.uid) {
+        setStatus("Error: Must be signed in to create a document.");
+        return; 
+    }
+    
     const folder = activeFolder === "All" ? "Inbox" : activeFolder;
     const payload = {
       title: "New doc",
@@ -121,14 +122,15 @@ export default function NotesPage() {
     };
 
     try {
-      const ref = await createNote(payload);
-      const newNote = { id: ref.id, createdAt: Date.now(), ...payload };
+      // Pass the authenticated user's ID directly to the service
+      const ref = await createNote(payload, user.uid); 
+      const newNote = { id: ref.id, createdAt: Date.now(), ...payload, userId: user.uid }; 
       setNotes((prev) => [newNote, ...prev]);
       openNote(ref.id);
       setStatus("New document created.");
     } catch (err) {
       console.error(err);
-      setStatus("Could not create note.");
+      setStatus("Could not create note. Check console for details.");
     }
   };
 
@@ -151,7 +153,7 @@ export default function NotesPage() {
     setSaving(true);
     try {
       const payload = { ...draft, formatting };
-      await updateNoteFirestore(selectedNoteId, payload);
+      await updateNoteFirestore(selectedNoteId, payload); 
       setNotes((prev) =>
         prev.map((n) => (n.id === selectedNoteId ? { ...n, ...payload } : n))
       );
@@ -164,8 +166,8 @@ export default function NotesPage() {
     }
   };
 
+  // --- Memoized Data & Utilities (All retained) ---
   const filteredNotes = useMemo(() => {
-    // Note: sidebarSearch has been removed from this file, adjusting filtering
     const query = mainSearch.toLowerCase().trim();
     return notes.filter((note) => {
       const folderMatch = activeFolder === "All" || (note.folder || "Inbox") === activeFolder;
@@ -173,12 +175,7 @@ export default function NotesPage() {
       const searchMatch = !query || text.includes(query);
       return folderMatch && searchMatch;
     });
-  }, [notes, activeFolder, mainSearch]); // Dependency array updated
-
-  const selectedNote = useMemo(
-    () => notes.find((n) => n.id === selectedNoteId) || null,
-    [notes, selectedNoteId]
-  );
+  }, [notes, activeFolder, mainSearch]); 
 
   const formatDate = (ms) => {
     if (!ms) return "";
@@ -190,21 +187,13 @@ export default function NotesPage() {
     }
   };
 
-  const downloadNote = (note, e) => {
-    e.stopPropagation();
-    const blob = new Blob([`${note.title || "Untitled"}\n\n${note.content || ""}`], {
-      type: "text/plain",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${(note.title || "note").replace(/\s+/g, "_")}.txt`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+  const updateDraftField = (field, value) => {
+    setDraft((prev) => ({ ...prev, [field]: value }));
+    setNotes((prev) =>
+      prev.map((n) => (n.id === selectedNoteId ? { ...n, [field]: value } : n))
+    );
   };
-
-  // --- Other formatting functions (applyHeading, applyFontSize, etc.) are kept here ---
-  // ... (toggleBold, toggleItalic, toggleHighlight, resetFormatting, cropWhitespace, addBullet, addNumber) ...
-
+  
   const applyHeading = (value) => {
     const heading = headingOptions.find((h) => h.value === value);
     if (!heading) return;
@@ -276,15 +265,20 @@ export default function NotesPage() {
     );
   };
 
-  const updateDraftField = (field, value) => {
-    setDraft((prev) => ({ ...prev, [field]: value }));
-    setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, [field]: value } : n))
-    );
+  const downloadNote = (note, e) => {
+    e.stopPropagation();
+    const blob = new Blob([`${note.title || "Untitled"}\n\n${note.content || ""}`], {
+      type: "text/plain",
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${(note.title || "note").replace(/\s+/g, "_")}.txt`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
-  
+
+  // --- Render ---
   return (
-    // Renders ONLY the main content and the editor panel
     <>
       <div className="notes-header">
         <h1>Notes</h1>
@@ -347,9 +341,9 @@ export default function NotesPage() {
       </div>
       {status && <div className="status-text">{status}</div>}
 
-      {selectedNote && (
+      {selectedNoteId && ( 
         <div className="editor-panel">
-          {/* Editor Panel Content */}
+          {/* Editor Bar */}
           <div className="editor-bar">
             {/* Back/Controls */}
             <button className="ghost-btn" onClick={closeEditor}>
@@ -383,15 +377,14 @@ export default function NotesPage() {
             </div>
             {/* Save Actions */}
             <div className="editor-actions">
-              <button className="ghost-btn" onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </button>
-              <button className="primary-btn" onClick={handleSave}>
-                <FontAwesomeIcon icon={faPen} /> Update
+              <div className="status-text" style={{marginRight: 10}}>{saving ? "Saving..." : status}</div>
+              <button className="primary-btn" onClick={handleSave} disabled={saving}>
+                <FontAwesomeIcon icon={faPen} /> {saving ? "Updating..." : "Update"}
               </button>
             </div>
           </div>
 
+          {/* Editor Body */}
           <div className="editor-body">
             <div className="editor-meta">
               <input

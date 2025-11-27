@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Rule for Tasks (Keep as is, since it works)
+    match /tasks/{taskId} {
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && 
+                       request.resource.data.userId is string &&
+                       request.resource.data.userId == request.auth.uid;
+    }
+
+    // Rule for Notes (SIMPLIFIED TO MATCH TASKS)
+    match /notes/{noteId} {
+      // 1. Read/Delete: You must own the note.
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      
+      // 2. Create: We removed isValidNote. 
+      // As long as you are logged in and send your userId, you can create.
+      allow create: if request.auth != null && 
+                       request.resource.data.userId is string && 
+                       request.resource.data.userId == request.auth.uid;
+    }
+  }
+}
