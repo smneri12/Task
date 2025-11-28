@@ -11,6 +11,7 @@ import {
   faSignOutAlt,
   faCalendar,
   faFolder,
+  faLayerGroup,            // 👈 NEW ICON FOR WORKSPACE
 } from "@fortawesome/free-solid-svg-icons";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase"; 
@@ -30,17 +31,21 @@ const mainNavLinks = [
   { path: "/projects", label: "Projects", icon: faFolder },
 ];
 
-export default function Sidebar({ user, activeFolder, setActiveFolder, isDropdownOpen, setIsDropdownOpen }) {
+export default function Sidebar({
+  user,
+  activeFolder,
+  setActiveFolder,
+  isDropdownOpen,
+  setIsDropdownOpen,
+}) {
   const location = useLocation(); 
   
-  // Safely retrieve user data (Prevents crash if user is null/undefined)
   const profileEmail = user?.email || "test@example.com"; 
   const profileName = user?.displayName || "Drew Miguel";
-  const profileInitials = profileName.split(' ').map(n => n[0]).join('') || 'N';
+  const profileInitials = profileName.split(" ").map(n => n[0]).join("") || "N";
 
   return (
     <aside className="notes-sidebar">
-      
       {/* --- User Profile Block --- */}
       <div className="sidebar-profile">
         <div className="avatar">{profileInitials}</div>
@@ -49,64 +54,74 @@ export default function Sidebar({ user, activeFolder, setActiveFolder, isDropdow
           <div className="profile-sub">Your personal workspace</div>
         </div>
       </div>
-      {/* ... Search and Notes Folder sections ... */}
 
+      {/* --- Folder chips (no more "Notes" pill above Inbox) --- */}
+      <div className="sidebar-section">
+        <div className="folder-list">
+          {folderOptions.map((folder) => (
+            <button
+              key={folder.key}
+              className={`folder-chip ${
+                activeFolder === folder.key ? "active" : ""
+              }`}
+              onClick={() => setActiveFolder(folder.key)}
+            >
+              <FontAwesomeIcon icon={folder.icon} />
+              <span>{folder.label}</span>
+            </button>
+          ))}
+          <button
+            className={`folder-chip ${activeFolder === "All" ? "active" : ""}`}
+            onClick={() => setActiveFolder("All")}
+          >
+            <FontAwesomeIcon icon={faInbox} />
+            <span>All</span>
+          </button>
+        </div>
+      </div>
+
+      {/* --- Main App Navigation Links AS DROPDOWN --- */}
       <div className="sidebar-section">
         <button
           className="sidebar-dropdown"
           onClick={() => setIsDropdownOpen((prev) => !prev)}
         >
           <div className="dropdown-label">
-            <FontAwesomeIcon icon={faFolder} />
-            <span>Notes</span>
+            <FontAwesomeIcon icon={faLayerGroup} /> {/* 👈 changed icon */}
+            <span>Workspace</span>
           </div>
-          <FontAwesomeIcon icon={faChevronDown} className={isDropdownOpen ? "rotated" : ""} />
+          <FontAwesomeIcon
+            icon={faChevronDown}
+            className={isDropdownOpen ? "rotated" : ""}
+          />
         </button>
+
         {isDropdownOpen && (
-          <div className="folder-list">
-            {folderOptions.map((folder) => (
-              <button
-                key={folder.key}
-                className={`folder-chip ${activeFolder === folder.key ? "active" : ""}`}
-                onClick={() => setActiveFolder(folder.key)}
+          <nav className="sidebar-nav nav-list">
+            {mainNavLinks.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`nav-row ${
+                  location.pathname === item.path ? "active" : ""
+                }`}
               >
-                <FontAwesomeIcon icon={folder.icon} />
-                <span>{folder.label}</span>
-              </button>
+                <FontAwesomeIcon icon={item.icon} />
+                <span>{item.label}</span>
+              </Link>
             ))}
-            <button
-              className={`folder-chip ${activeFolder === "All" ? "active" : ""}`}
-              onClick={() => setActiveFolder("All")}
-            >
-              <FontAwesomeIcon icon={faInbox} />
-              <span>All</span>
-            </button>
-          </div>
+          </nav>
         )}
       </div>
-
-      {/* --- Main App Navigation Links --- */}
-      <nav className="sidebar-nav">
-        {mainNavLinks.map((item) => (
-          <Link
-            key={item.path}
-            to={item.path} 
-            className={`nav-row ${location.pathname === item.path ? "active" : ""}`}
-          >
-            <FontAwesomeIcon icon={item.icon} />
-            <span>{item.label}</span>
-          </Link>
-        ))}
-      </nav>
 
       {/* --- Sign Out Block --- */}
       <div className="signout-block">
         <div className="signout-line" />
         <button className="signout-btn" onClick={() => signOut(auth)}>
           <FontAwesomeIcon icon={faSignOutAlt} />
-          <div style={{marginLeft: '10px'}}>
+          <div style={{ marginLeft: "10px" }}>
             <div className="profile-name">Sign out</div>
-            <div className="profile-sub">{profileEmail}</div> 
+            <div className="profile-sub">{profileEmail}</div>
           </div>
         </button>
       </div>
