@@ -1,0 +1,20 @@
+
+{
+  "indexes": [
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "mode": "ASCENDING" 
+        },
+        {
+          "fieldPath": "creationDate",
+          "mode": "DESCENDING" 
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
