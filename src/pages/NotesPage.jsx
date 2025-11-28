@@ -1,4 +1,4 @@
-// src/pages/NotesPage.jsx (CLEANED UP FOR LAYOUT)
+// src/pages/NotesPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -18,18 +18,32 @@ import {
   faEraser,
   faArrowLeft,
   faEllipsisV,
+  faChevronDown,
+  faPaperPlane,
 } from "@fortawesome/free-solid-svg-icons";
-import { fetchNotes, createNote, updateNoteFirestore, deleteNoteFirestore } from "../services/notes";
-// Removed signOut and auth imports, as Sign Out is now handled in Sidebar.jsx
-import "../index.css"; 
+import {
+  fetchNotes,
+  createNote,
+  updateNoteFirestore,
+  deleteNoteFirestore,
+} from "../services/notes";
+import "../index.css";
 
-// --- STATIC DATA EXTRACTED FROM NotesPage.jsx ---
-// NOTE: Folder/Navigation options are now mostly managed in Sidebar.jsx/MainLayout.jsx
+// --- STATIC DATA ---
 const folderOptions = [
   { key: "Inbox", label: "Inbox" },
   { key: "School", label: "School" },
   { key: "Work", label: "Work" },
   { key: "Personal", label: "Personal" },
+  { key: "All", label: "All" },
+];
+
+const quickCreateOptions = [
+  { key: "message", label: "Message" },
+  { key: "note", label: "Note" },
+  { key: "calendar", label: "Calendar" },
+  { key: "project", label: "Project" },
+  { key: "all", label: "All notes" },
 ];
 
 const defaultFormatting = {
@@ -59,31 +73,40 @@ const headingOptions = [
   { value: "body", label: "Body", fontSize: "16px", fontWeight: "400" },
 ];
 
-
-export default function NotesPage() {
+// FINAL VERSION + USER PROP
+export default function NotesPage({ user }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
-  // Removed activeFolder and dropdown state, as it's now managed in MainLayout
-  const [activeFolder] = useState("Inbox"); // Keep a default for filtering/creation logic
-  
+  // now matches version 1 layout (All + select) but still works with your filter logic
+  const [activeFolder, setActiveFolder] = useState("All");
+
   const [mainSearch, setMainSearch] = useState("");
   const [selectedNoteId, setSelectedNoteId] = useState(null);
-  const [draft, setDraft] = useState({ title: "", content: "", folder: "Inbox" });
+  const [draft, setDraft] = useState({
+    title: "",
+    content: "",
+    folder: "Inbox",
+  });
   const [formatting, setFormatting] = useState(defaultFormatting);
   const [saving, setSaving] = useState(false);
-  
-  // NOTE: sidebarSearch removed, as it's now an independent component in Sidebar.jsx
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
+  // --- Data Loading (final version, now gated by user) ---
   useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      setNotes([]);
+      return;
+    }
+
     const load = async () => {
       setLoading(true);
       try {
-        // Fetch notes logic remains the same
         const data = await fetchNotes();
         setNotes(data);
       } catch (err) {
-        console.error(err);
+        console.error("Error loading notes:", err);
         setStatus("Could not load notes.");
       } finally {
         setLoading(false);
@@ -91,8 +114,9 @@ export default function NotesPage() {
     };
 
     load();
-  }, []);
+  }, [user]);
 
+  // --- Handlers ---
   const openNote = (noteId) => {
     const note = notes.find((n) => n.id === noteId);
     if (!note) return;
@@ -111,24 +135,42 @@ export default function NotesPage() {
     setFormatting(defaultFormatting);
   };
 
-  const handleCreate = async () => {
-    const folder = activeFolder === "All" ? "Inbox" : activeFolder;
+  // handleCreate now matches version 1 layout (multiple create types),
+  // but still uses your final-version Firestore + user logic.
+  const handleCreate = async (typeLabel = "Note") => {
+    if (!user || !user.uid) {
+      setStatus("Error: Must be signed in to create a document.");
+      return;
+    }
+
+    const fallbackFolder = "Inbox";
+    const folder = activeFolder === "All" ? fallbackFolder : activeFolder;
+
     const payload = {
-      title: "New doc",
+      title: typeLabel === "Note" ? "New doc" : typeLabel,
       content: "",
       folder,
       formatting: defaultFormatting,
+      type: typeLabel.toLowerCase(),
     };
 
     try {
-      const ref = await createNote(payload);
-      const newNote = { id: ref.id, createdAt: Date.now(), ...payload };
+      const ref = await createNote(payload, user.uid);
+      const newNote = {
+        id: ref.id,
+        createdAt: Date.now(),
+        ...payload,
+        userId: user.uid,
+      };
       setNotes((prev) => [newNote, ...prev]);
       openNote(ref.id);
-      setStatus("New document created.");
+      const createdMsg =
+        typeLabel === "Note" ? "New document created." : `${typeLabel} created.`;
+      setStatus(createdMsg);
+      setCreateMenuOpen(false);
     } catch (err) {
       console.error(err);
-      setStatus("Could not create note.");
+      setStatus("Could not create note. Check console for details.");
     }
   };
 
@@ -164,21 +206,17 @@ export default function NotesPage() {
     }
   };
 
+  // --- Memoized Data & Utilities ---
   const filteredNotes = useMemo(() => {
-    // Note: sidebarSearch has been removed from this file, adjusting filtering
     const query = mainSearch.toLowerCase().trim();
     return notes.filter((note) => {
-      const folderMatch = activeFolder === "All" || (note.folder || "Inbox") === activeFolder;
+      const folderMatch =
+        activeFolder === "All" || (note.folder || "Inbox") === activeFolder;
       const text = `${note.title || ""} ${note.content || ""}`.toLowerCase();
       const searchMatch = !query || text.includes(query);
       return folderMatch && searchMatch;
     });
-  }, [notes, activeFolder, mainSearch]); // Dependency array updated
-
-  const selectedNote = useMemo(
-    () => notes.find((n) => n.id === selectedNoteId) || null,
-    [notes, selectedNoteId]
-  );
+  }, [notes, activeFolder, mainSearch]);
 
   const formatDate = (ms) => {
     if (!ms) return "";
@@ -190,20 +228,12 @@ export default function NotesPage() {
     }
   };
 
-  const downloadNote = (note, e) => {
-    e.stopPropagation();
-    const blob = new Blob([`${note.title || "Untitled"}\n\n${note.content || ""}`], {
-      type: "text/plain",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${(note.title || "note").replace(/\s+/g, "_")}.txt`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+  const updateDraftField = (field, value) => {
+    setDraft((prev) => ({ ...prev, [field]: value }));
+    setNotes((prev) =>
+      prev.map((n) => (n.id === selectedNoteId ? { ...n, [field]: value } : n))
+    );
   };
-
-  // --- Other formatting functions (applyHeading, applyFontSize, etc.) are kept here ---
-  // ... (toggleBold, toggleItalic, toggleHighlight, resetFormatting, cropWhitespace, addBullet, addNumber) ...
 
   const applyHeading = (value) => {
     const heading = headingOptions.find((h) => h.value === value);
@@ -252,42 +282,70 @@ export default function NotesPage() {
     const trimmed = draft.content.trim();
     setDraft((prev) => ({ ...prev, content: trimmed }));
     setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, content: trimmed } : n))
+      prev.map((n) =>
+        n.id === selectedNoteId ? { ...n, content: trimmed } : n
+      )
     );
   };
 
   const addBullet = () => {
-    const base = draft.content.endsWith("\n") || draft.content.length === 0 ? draft.content : `${draft.content}\n`;
+    const base =
+      draft.content.endsWith("\n") || draft.content.length === 0
+        ? draft.content
+        : `${draft.content}\n`;
     const updated = `${base}- `;
     setDraft((prev) => ({ ...prev, content: updated }));
     setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, content: updated } : n))
+      prev.map((n) =>
+        n.id === selectedNoteId ? { ...n, content: updated } : n
+      )
     );
   };
 
   const addNumber = () => {
     const lines = draft.content.split("\n").filter(Boolean);
     const next = lines.length + 1;
-    const base = draft.content.endsWith("\n") || draft.content.length === 0 ? draft.content : `${draft.content}\n`;
+    const base =
+      draft.content.endsWith("\n") || draft.content.length === 0
+        ? draft.content
+        : `${draft.content}\n`;
     const updated = `${base}${next}. `;
     setDraft((prev) => ({ ...prev, content: updated }));
     setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, content: updated } : n))
+      prev.map((n) =>
+        n.id === selectedNoteId ? { ...n, content: updated } : n
+      )
     );
   };
 
-  const updateDraftField = (field, value) => {
-    setDraft((prev) => ({ ...prev, [field]: value }));
-    setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, [field]: value } : n))
+  const downloadNote = (note, e) => {
+    e.stopPropagation();
+    const blob = new Blob(
+      [`${note.title || "Untitled"}\n\n${note.content || ""}`],
+      {
+        type: "text/plain",
+      }
     );
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${(note.title || "note").replace(/\s+/g, "_")}.txt`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
-  
+
+  // --- Render ---
   return (
-    // Renders ONLY the main content and the editor panel
     <>
+      {/* HEADER: now follows version 1 layout */}
       <div className="notes-header">
-        <h1>Notes</h1>
+        <div className="header-left">
+          <h1>Notes</h1>
+<button className="cta-new-wide" onClick={() => handleCreate("Note")}>
+  <span className="pill">NEW NOTE</span>
+  Write your next big idea...
+</button>
+
+        </div>
         <div className="header-actions">
           <div className="main-search">
             <input
@@ -297,12 +355,51 @@ export default function NotesPage() {
             />
             <FontAwesomeIcon icon={faSearch} />
           </div>
-          <button className="new-doc" onClick={handleCreate}>
-            <FontAwesomeIcon icon={faPlus} /> New doc
+
+          <div className="folder-switch">
+            <span>Folder</span>
+            <select
+              value={activeFolder}
+              onChange={(e) => setActiveFolder(e.target.value)}
+            >
+              {folderOptions.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button className="new-message" onClick={() => handleCreate("Message")}>
+            <FontAwesomeIcon icon={faPaperPlane} /> New message
           </button>
+
+          <div className="new-doc-dropdown">
+            <button
+              className="new-doc"
+              onClick={() => setCreateMenuOpen((prev) => !prev)}
+            >
+              <FontAwesomeIcon icon={faPlus} /> New
+              <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: 12 }} />
+            </button>
+            {createMenuOpen && (
+              <div className="create-menu">
+                {quickCreateOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    className="create-menu-item"
+                    onClick={() => handleCreate(opt.label)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* NOTES GRID */}
       <div className="notes-grid">
         {loading && <div className="empty">Loading notes…</div>}
         {!loading && filteredNotes.length === 0 && (
@@ -321,7 +418,8 @@ export default function NotesPage() {
               </div>
               <div className="note-title">{note.title || "Untitled"}</div>
               <div className="note-preview">
-                {(note.content || "").slice(0, 110) || "Start writing your note…"}
+                {(note.content || "").slice(0, 110) ||
+                  "Start writing your note…"}
               </div>
               <div className="note-actions-row">
                 <button
@@ -347,51 +445,120 @@ export default function NotesPage() {
       </div>
       {status && <div className="status-text">{status}</div>}
 
-      {selectedNote && (
+      {/* EDITOR PANEL (unchanged except layout CSS) */}
+      {selectedNoteId && (
         <div className="editor-panel">
-          {/* Editor Panel Content */}
+          {/* Editor Bar */}
           <div className="editor-bar">
             {/* Back/Controls */}
             <button className="ghost-btn" onClick={closeEditor}>
               <FontAwesomeIcon icon={faArrowLeft} /> Back
             </button>
             <div className="editor-controls">
-                {/* Heading Select */}
-                <select value={formatting.heading} onChange={(e) => applyHeading(e.target.value)} className="select">
-                    {headingOptions.map((h) => (<option key={h.value} value={h.value}>{h.label}</option>))}
-                </select>
-                {/* Font Size Select */}
-                <select value={formatting.fontSize} onChange={(e) => applyFontSize(e.target.value)} className="select">
-                    {sizeOptions.map((size) => (<option key={size} value={size}>{size}</option>))}
-                </select>
-                {/* Font Family Select */}
-                <select value={formatting.fontFamily} onChange={(e) => applyFontFamily(e.target.value)} className="select wide">
-                    {fontOptions.map((font) => (<option key={font} value={font}>{font.replace(/['"]/g, "")}</option>))}
-                </select>
-                {/* Bold/Italic/Highlight/etc buttons */}
-                <button className={`ghost-btn ${formatting.fontWeight === "bold" ? "active" : ""}`} onClick={toggleBold}><FontAwesomeIcon icon={faBold} /></button>
-                <button className={`ghost-btn ${formatting.fontStyle === "italic" ? "active" : ""}`} onClick={toggleItalic}><FontAwesomeIcon icon={faItalic} /></button>
-                <button className={`ghost-btn ${formatting.highlight ? "active" : ""}`} onClick={toggleHighlight}><FontAwesomeIcon icon={faHighlighter} /></button>
-                <button className="ghost-btn" onClick={resetFormatting}><FontAwesomeIcon icon={faEraser} /></button>
-                <button className="ghost-btn" onClick={cropWhitespace}><FontAwesomeIcon icon={faCrop} /></button>
-                <label className="ghost-btn color-picker" title="Text color">
-                    <FontAwesomeIcon icon={faPalette} />
-                    <input type="color" value={formatting.color} onChange={(e) => setFormatting((prev) => ({ ...prev, color: e.target.value }))} />
-                </label>
-                <button className="ghost-btn" onClick={addBullet}><FontAwesomeIcon icon={faListUl} /></button>
-                <button className="ghost-btn" onClick={addNumber}><FontAwesomeIcon icon={faListOl} /></button>
-            </div>
-            {/* Save Actions */}
-            <div className="editor-actions">
-              <button className="ghost-btn" onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
+              {/* Heading Select */}
+              <select
+                value={formatting.heading}
+                onChange={(e) => applyHeading(e.target.value)}
+                className="select"
+              >
+                {headingOptions.map((h) => (
+                  <option key={h.value} value={h.value}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+              {/* Font Size Select */}
+              <select
+                value={formatting.fontSize}
+                onChange={(e) => applyFontSize(e.target.value)}
+                className="select"
+              >
+                {sizeOptions.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+              {/* Font Family Select */}
+              <select
+                value={formatting.fontFamily}
+                onChange={(e) => applyFontFamily(e.target.value)}
+                className="select wide"
+              >
+                {fontOptions.map((font) => (
+                  <option key={font} value={font}>
+                    {font.replace(/['"]/g, "")}
+                  </option>
+                ))}
+              </select>
+              {/* Bold/Italic/Highlight/etc buttons */}
+              <button
+                className={`ghost-btn ${
+                  formatting.fontWeight === "bold" ? "active" : ""
+                }`}
+                onClick={toggleBold}
+              >
+                <FontAwesomeIcon icon={faBold} />
               </button>
-              <button className="primary-btn" onClick={handleSave}>
-                <FontAwesomeIcon icon={faPen} /> Update
+              <button
+                className={`ghost-btn ${
+                  formatting.fontStyle === "italic" ? "active" : ""
+                }`}
+                onClick={toggleItalic}
+              >
+                <FontAwesomeIcon icon={faItalic} />
+              </button>
+              <button
+                className={`ghost-btn ${
+                  formatting.highlight ? "active" : ""
+                }`}
+                onClick={toggleHighlight}
+              >
+                <FontAwesomeIcon icon={faHighlighter} />
+              </button>
+              <button className="ghost-btn" onClick={resetFormatting}>
+                <FontAwesomeIcon icon={faEraser} />
+              </button>
+              <button className="ghost-btn" onClick={cropWhitespace}>
+                <FontAwesomeIcon icon={faCrop} />
+              </button>
+              <label className="ghost-btn color-picker" title="Text color">
+                <FontAwesomeIcon icon={faPalette} />
+                <input
+                  type="color"
+                  value={formatting.color}
+                  onChange={(e) =>
+                    setFormatting((prev) => ({
+                      ...prev,
+                      color: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <button className="ghost-btn" onClick={addBullet}>
+                <FontAwesomeIcon icon={faListUl} />
+              </button>
+              <button className="ghost-btn" onClick={addNumber}>
+                <FontAwesomeIcon icon={faListOl} />
+              </button>
+            </div>
+            {/* Save Actions (kept from your final version) */}
+            <div className="editor-actions">
+              <div className="status-text" style={{ marginRight: 10 }}>
+                {saving ? "Saving..." : status}
+              </div>
+              <button
+                className="primary-btn"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                <FontAwesomeIcon icon={faPen} />{" "}
+                {saving ? "Updating..." : "Update"}
               </button>
             </div>
           </div>
 
+          {/* Editor Body */}
           <div className="editor-body">
             <div className="editor-meta">
               <input
@@ -405,7 +572,11 @@ export default function NotesPage() {
                 value={draft.folder}
                 onChange={(e) => updateDraftField("folder", e.target.value)}
               >
-                {folderOptions.map((f) => (<option key={f.key} value={f.key}>{f.label}</option>))}
+                {folderOptions.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
               </select>
             </div>
             <textarea
