@@ -162,6 +162,7 @@ html {
 .header-left {
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 
 .header-title {
@@ -464,6 +465,10 @@ html {
   box-shadow: 0 10px 26px rgba(47, 125, 109, 0.18);
 }
 
+.folder-list.static {
+  box-shadow: none;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -477,14 +482,28 @@ html {
   gap: 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  color: #4b5563;
+  color: #1f2937;
+  text-decoration: none;
+  font-weight: 600;
+  border: 1px solid transparent;
 }
 
 .nav-row.active {
-  border-left: 4px solid #264b5d;
+  border: 1px solid #1f9d55;
+  background: #e6f6ed;
+  color: #0f172a;
+}
+
+.nav-list .nav-row {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  background: #fff;
+}
+
+.nav-list .nav-row.active {
+  border-color: #2f7d6d;
   background: #e8f0f7;
-  padding-left: 8px;
-  color: #1f2937;
 }
 
 .signout-block {
@@ -528,9 +547,31 @@ html {
   font-weight: 800;
 }
 
+.cta-new-wide {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 16px 30px rgba(22, 163, 74, 0.28);
+}
+
+.cta-new-wide .pill {
+  background: rgba(255,255,255,0.22);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
 .header-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;   /* 🔧 top-align all header controls */
   gap: 14px;
 }
 
@@ -544,6 +585,7 @@ html {
   background: #fff;
   min-width: 220px;
   box-shadow: 0 10px 26px rgba(0,0,0,0.04);
+  height: 48px; /* unified height */
 }
 
 .main-search input {
@@ -552,6 +594,63 @@ html {
   background: transparent;
   width: 100%;
   font-size: 14px;
+}
+
+/* label + select block */
+.folder-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+
+  /* 🔧 Force the whole Folder block (label + select) a bit higher */
+  transform: translateY(-20px);  /* tweak to -6px or -10px if you want */
+}
+
+
+
+
+/* custom-styled select with centered, pulled-in arrow */
+.folder-switch select {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 10px 32px 10px 12px;
+  min-width: 140px;
+  font-size: 14px;
+  background-color: #fff;
+  color: #111827;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.04);
+  height: 48px; /* unified height */
+
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  /* ▼ little chevron, closer to center and not hugging the edge */
+  background-image:
+    linear-gradient(45deg, transparent 50%, #6b7280 50%),
+    linear-gradient(135deg, #6b7280 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) center,
+    calc(100% - 13px) center;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.new-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 12px;
+  background: #1f9d55;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(31, 157, 85, 0.28);
+  height: 48px; /* unified height */
 }
 
 .new-doc {
@@ -566,6 +665,38 @@ html {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 14px 30px rgba(63, 127, 111, 0.32);
+  height: 48px; /* unified height */
+}
+
+.new-doc-dropdown {
+  position: relative;
+}
+
+.create-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 16px 30px rgba(0,0,0,0.12);
+  min-width: 180px;
+  z-index: 5;
+  overflow: hidden;
+}
+
+.create-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #111827;
+}
+
+.create-menu-item:hover {
+  background: #f3f4f6;
 }
 
 .notes-grid {
@@ -785,5 +916,33 @@ html {
 
   .notes-main {
     padding: 22px 18px;
+  }
+
+  .notes-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .main-search {
+    flex: 1;
+    width: 100%;
+  }
+
+  .folder-switch {
+    width: 100%;
+  }
+
+  .new-doc-dropdown {
+    width: 100%;
+  }
+
+  .new-doc {
+    width: 100%;
+    justify-content: center;
   }
 }
