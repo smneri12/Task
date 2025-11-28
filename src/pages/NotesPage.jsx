@@ -2,17 +2,32 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faSearch, faPlus, faDownload, faTrashAlt, faPen, faBold, faItalic,
-  faListUl, faListOl, faHighlighter, faCrop, faHeading, faPalette,
-  faEraser, faArrowLeft, faEllipsisV,
+  faSearch,
+  faPlus,
+  faDownload,
+  faTrashAlt,
+  faPen,
+  faBold,
+  faItalic,
+  faListUl,
+  faListOl,
+  faHighlighter,
+  faCrop,
+  faHeading,
+  faPalette,
+  faEraser,
+  faArrowLeft,
+  faEllipsisV,
+  faChevronDown,
+  faPaperPlane,
 } from "@fortawesome/free-solid-svg-icons";
-import { 
-  fetchNotes, 
-  createNote, 
-  updateNoteFirestore, 
-  deleteNoteFirestore 
+import {
+  fetchNotes,
+  createNote,
+  updateNoteFirestore,
+  deleteNoteFirestore,
 } from "../services/notes";
-import "../index.css"; 
+import "../index.css";
 
 // --- STATIC DATA ---
 const folderOptions = [
@@ -20,6 +35,15 @@ const folderOptions = [
   { key: "School", label: "School" },
   { key: "Work", label: "Work" },
   { key: "Personal", label: "Personal" },
+  { key: "All", label: "All" },
+];
+
+const quickCreateOptions = [
+  { key: "message", label: "Message" },
+  { key: "note", label: "Note" },
+  { key: "calendar", label: "Calendar" },
+  { key: "project", label: "Project" },
+  { key: "all", label: "All notes" },
 ];
 
 const defaultFormatting = {
@@ -49,27 +73,32 @@ const headingOptions = [
   { value: "body", label: "Body", fontSize: "16px", fontWeight: "400" },
 ];
 
-
-// FIX 1: Component accepts the 'user' prop
-export default function NotesPage({ user }) { 
+// FINAL VERSION + USER PROP
+export default function NotesPage({ user }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
-  const [activeFolder] = useState("Inbox"); 
-  
+  // now matches version 1 layout (All + select) but still works with your filter logic
+  const [activeFolder, setActiveFolder] = useState("All");
+
   const [mainSearch, setMainSearch] = useState("");
   const [selectedNoteId, setSelectedNoteId] = useState(null);
-  const [draft, setDraft] = useState({ title: "", content: "", folder: "Inbox" });
+  const [draft, setDraft] = useState({
+    title: "",
+    content: "",
+    folder: "Inbox",
+  });
   const [formatting, setFormatting] = useState(defaultFormatting);
   const [saving, setSaving] = useState(false);
-  
-  // --- Data Loading ---
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+
+  // --- Data Loading (final version, now gated by user) ---
   useEffect(() => {
     if (!user) {
-        setLoading(false);
-        setNotes([]);
-        return;
-    } 
+      setLoading(false);
+      setNotes([]);
+      return;
+    }
 
     const load = async () => {
       setLoading(true);
@@ -85,7 +114,7 @@ export default function NotesPage({ user }) {
     };
 
     load();
-  }, [user]); 
+  }, [user]);
 
   // --- Handlers ---
   const openNote = (noteId) => {
@@ -106,28 +135,39 @@ export default function NotesPage({ user }) {
     setFormatting(defaultFormatting);
   };
 
-  const handleCreate = async () => {
-    // Check for user existence
+  // handleCreate now matches version 1 layout (multiple create types),
+  // but still uses your final-version Firestore + user logic.
+  const handleCreate = async (typeLabel = "Note") => {
     if (!user || !user.uid) {
-        setStatus("Error: Must be signed in to create a document.");
-        return; 
+      setStatus("Error: Must be signed in to create a document.");
+      return;
     }
-    
-    const folder = activeFolder === "All" ? "Inbox" : activeFolder;
+
+    const fallbackFolder = "Inbox";
+    const folder = activeFolder === "All" ? fallbackFolder : activeFolder;
+
     const payload = {
-      title: "New doc",
+      title: typeLabel === "Note" ? "New doc" : typeLabel,
       content: "",
       folder,
       formatting: defaultFormatting,
+      type: typeLabel.toLowerCase(),
     };
 
     try {
-      // Pass the authenticated user's ID directly to the service
-      const ref = await createNote(payload, user.uid); 
-      const newNote = { id: ref.id, createdAt: Date.now(), ...payload, userId: user.uid }; 
+      const ref = await createNote(payload, user.uid);
+      const newNote = {
+        id: ref.id,
+        createdAt: Date.now(),
+        ...payload,
+        userId: user.uid,
+      };
       setNotes((prev) => [newNote, ...prev]);
       openNote(ref.id);
-      setStatus("New document created.");
+      const createdMsg =
+        typeLabel === "Note" ? "New document created." : `${typeLabel} created.`;
+      setStatus(createdMsg);
+      setCreateMenuOpen(false);
     } catch (err) {
       console.error(err);
       setStatus("Could not create note. Check console for details.");
@@ -153,7 +193,7 @@ export default function NotesPage({ user }) {
     setSaving(true);
     try {
       const payload = { ...draft, formatting };
-      await updateNoteFirestore(selectedNoteId, payload); 
+      await updateNoteFirestore(selectedNoteId, payload);
       setNotes((prev) =>
         prev.map((n) => (n.id === selectedNoteId ? { ...n, ...payload } : n))
       );
@@ -166,16 +206,17 @@ export default function NotesPage({ user }) {
     }
   };
 
-  // --- Memoized Data & Utilities (All retained) ---
+  // --- Memoized Data & Utilities ---
   const filteredNotes = useMemo(() => {
     const query = mainSearch.toLowerCase().trim();
     return notes.filter((note) => {
-      const folderMatch = activeFolder === "All" || (note.folder || "Inbox") === activeFolder;
+      const folderMatch =
+        activeFolder === "All" || (note.folder || "Inbox") === activeFolder;
       const text = `${note.title || ""} ${note.content || ""}`.toLowerCase();
       const searchMatch = !query || text.includes(query);
       return folderMatch && searchMatch;
     });
-  }, [notes, activeFolder, mainSearch]); 
+  }, [notes, activeFolder, mainSearch]);
 
   const formatDate = (ms) => {
     if (!ms) return "";
@@ -193,7 +234,7 @@ export default function NotesPage({ user }) {
       prev.map((n) => (n.id === selectedNoteId ? { ...n, [field]: value } : n))
     );
   };
-  
+
   const applyHeading = (value) => {
     const heading = headingOptions.find((h) => h.value === value);
     if (!heading) return;
@@ -241,35 +282,50 @@ export default function NotesPage({ user }) {
     const trimmed = draft.content.trim();
     setDraft((prev) => ({ ...prev, content: trimmed }));
     setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, content: trimmed } : n))
+      prev.map((n) =>
+        n.id === selectedNoteId ? { ...n, content: trimmed } : n
+      )
     );
   };
 
   const addBullet = () => {
-    const base = draft.content.endsWith("\n") || draft.content.length === 0 ? draft.content : `${draft.content}\n`;
+    const base =
+      draft.content.endsWith("\n") || draft.content.length === 0
+        ? draft.content
+        : `${draft.content}\n`;
     const updated = `${base}- `;
     setDraft((prev) => ({ ...prev, content: updated }));
     setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, content: updated } : n))
+      prev.map((n) =>
+        n.id === selectedNoteId ? { ...n, content: updated } : n
+      )
     );
   };
 
   const addNumber = () => {
     const lines = draft.content.split("\n").filter(Boolean);
     const next = lines.length + 1;
-    const base = draft.content.endsWith("\n") || draft.content.length === 0 ? draft.content : `${draft.content}\n`;
+    const base =
+      draft.content.endsWith("\n") || draft.content.length === 0
+        ? draft.content
+        : `${draft.content}\n`;
     const updated = `${base}${next}. `;
     setDraft((prev) => ({ ...prev, content: updated }));
     setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, content: updated } : n))
+      prev.map((n) =>
+        n.id === selectedNoteId ? { ...n, content: updated } : n
+      )
     );
   };
 
   const downloadNote = (note, e) => {
     e.stopPropagation();
-    const blob = new Blob([`${note.title || "Untitled"}\n\n${note.content || ""}`], {
-      type: "text/plain",
-    });
+    const blob = new Blob(
+      [`${note.title || "Untitled"}\n\n${note.content || ""}`],
+      {
+        type: "text/plain",
+      }
+    );
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `${(note.title || "note").replace(/\s+/g, "_")}.txt`;
@@ -280,8 +336,16 @@ export default function NotesPage({ user }) {
   // --- Render ---
   return (
     <>
+      {/* HEADER: now follows version 1 layout */}
       <div className="notes-header">
-        <h1>Notes</h1>
+        <div className="header-left">
+          <h1>Notes</h1>
+<button className="cta-new-wide" onClick={() => handleCreate("Note")}>
+  <span className="pill">NEW NOTE</span>
+  Write your next big idea...
+</button>
+
+        </div>
         <div className="header-actions">
           <div className="main-search">
             <input
@@ -291,12 +355,51 @@ export default function NotesPage({ user }) {
             />
             <FontAwesomeIcon icon={faSearch} />
           </div>
-          <button className="new-doc" onClick={handleCreate}>
-            <FontAwesomeIcon icon={faPlus} /> New doc
+
+          <div className="folder-switch">
+            <span>Folder</span>
+            <select
+              value={activeFolder}
+              onChange={(e) => setActiveFolder(e.target.value)}
+            >
+              {folderOptions.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button className="new-message" onClick={() => handleCreate("Message")}>
+            <FontAwesomeIcon icon={faPaperPlane} /> New message
           </button>
+
+          <div className="new-doc-dropdown">
+            <button
+              className="new-doc"
+              onClick={() => setCreateMenuOpen((prev) => !prev)}
+            >
+              <FontAwesomeIcon icon={faPlus} /> New
+              <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: 12 }} />
+            </button>
+            {createMenuOpen && (
+              <div className="create-menu">
+                {quickCreateOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    className="create-menu-item"
+                    onClick={() => handleCreate(opt.label)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* NOTES GRID */}
       <div className="notes-grid">
         {loading && <div className="empty">Loading notes…</div>}
         {!loading && filteredNotes.length === 0 && (
@@ -315,7 +418,8 @@ export default function NotesPage({ user }) {
               </div>
               <div className="note-title">{note.title || "Untitled"}</div>
               <div className="note-preview">
-                {(note.content || "").slice(0, 110) || "Start writing your note…"}
+                {(note.content || "").slice(0, 110) ||
+                  "Start writing your note…"}
               </div>
               <div className="note-actions-row">
                 <button
@@ -341,7 +445,8 @@ export default function NotesPage({ user }) {
       </div>
       {status && <div className="status-text">{status}</div>}
 
-      {selectedNoteId && ( 
+      {/* EDITOR PANEL (unchanged except layout CSS) */}
+      {selectedNoteId && (
         <div className="editor-panel">
           {/* Editor Bar */}
           <div className="editor-bar">
@@ -350,36 +455,105 @@ export default function NotesPage({ user }) {
               <FontAwesomeIcon icon={faArrowLeft} /> Back
             </button>
             <div className="editor-controls">
-                {/* Heading Select */}
-                <select value={formatting.heading} onChange={(e) => applyHeading(e.target.value)} className="select">
-                    {headingOptions.map((h) => (<option key={h.value} value={h.value}>{h.label}</option>))}
-                </select>
-                {/* Font Size Select */}
-                <select value={formatting.fontSize} onChange={(e) => applyFontSize(e.target.value)} className="select">
-                    {sizeOptions.map((size) => (<option key={size} value={size}>{size}</option>))}
-                </select>
-                {/* Font Family Select */}
-                <select value={formatting.fontFamily} onChange={(e) => applyFontFamily(e.target.value)} className="select wide">
-                    {fontOptions.map((font) => (<option key={font} value={font}>{font.replace(/['"]/g, "")}</option>))}
-                </select>
-                {/* Bold/Italic/Highlight/etc buttons */}
-                <button className={`ghost-btn ${formatting.fontWeight === "bold" ? "active" : ""}`} onClick={toggleBold}><FontAwesomeIcon icon={faBold} /></button>
-                <button className={`ghost-btn ${formatting.fontStyle === "italic" ? "active" : ""}`} onClick={toggleItalic}><FontAwesomeIcon icon={faItalic} /></button>
-                <button className={`ghost-btn ${formatting.highlight ? "active" : ""}`} onClick={toggleHighlight}><FontAwesomeIcon icon={faHighlighter} /></button>
-                <button className="ghost-btn" onClick={resetFormatting}><FontAwesomeIcon icon={faEraser} /></button>
-                <button className="ghost-btn" onClick={cropWhitespace}><FontAwesomeIcon icon={faCrop} /></button>
-                <label className="ghost-btn color-picker" title="Text color">
-                    <FontAwesomeIcon icon={faPalette} />
-                    <input type="color" value={formatting.color} onChange={(e) => setFormatting((prev) => ({ ...prev, color: e.target.value }))} />
-                </label>
-                <button className="ghost-btn" onClick={addBullet}><FontAwesomeIcon icon={faListUl} /></button>
-                <button className="ghost-btn" onClick={addNumber}><FontAwesomeIcon icon={faListOl} /></button>
+              {/* Heading Select */}
+              <select
+                value={formatting.heading}
+                onChange={(e) => applyHeading(e.target.value)}
+                className="select"
+              >
+                {headingOptions.map((h) => (
+                  <option key={h.value} value={h.value}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+              {/* Font Size Select */}
+              <select
+                value={formatting.fontSize}
+                onChange={(e) => applyFontSize(e.target.value)}
+                className="select"
+              >
+                {sizeOptions.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+              {/* Font Family Select */}
+              <select
+                value={formatting.fontFamily}
+                onChange={(e) => applyFontFamily(e.target.value)}
+                className="select wide"
+              >
+                {fontOptions.map((font) => (
+                  <option key={font} value={font}>
+                    {font.replace(/['"]/g, "")}
+                  </option>
+                ))}
+              </select>
+              {/* Bold/Italic/Highlight/etc buttons */}
+              <button
+                className={`ghost-btn ${
+                  formatting.fontWeight === "bold" ? "active" : ""
+                }`}
+                onClick={toggleBold}
+              >
+                <FontAwesomeIcon icon={faBold} />
+              </button>
+              <button
+                className={`ghost-btn ${
+                  formatting.fontStyle === "italic" ? "active" : ""
+                }`}
+                onClick={toggleItalic}
+              >
+                <FontAwesomeIcon icon={faItalic} />
+              </button>
+              <button
+                className={`ghost-btn ${
+                  formatting.highlight ? "active" : ""
+                }`}
+                onClick={toggleHighlight}
+              >
+                <FontAwesomeIcon icon={faHighlighter} />
+              </button>
+              <button className="ghost-btn" onClick={resetFormatting}>
+                <FontAwesomeIcon icon={faEraser} />
+              </button>
+              <button className="ghost-btn" onClick={cropWhitespace}>
+                <FontAwesomeIcon icon={faCrop} />
+              </button>
+              <label className="ghost-btn color-picker" title="Text color">
+                <FontAwesomeIcon icon={faPalette} />
+                <input
+                  type="color"
+                  value={formatting.color}
+                  onChange={(e) =>
+                    setFormatting((prev) => ({
+                      ...prev,
+                      color: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <button className="ghost-btn" onClick={addBullet}>
+                <FontAwesomeIcon icon={faListUl} />
+              </button>
+              <button className="ghost-btn" onClick={addNumber}>
+                <FontAwesomeIcon icon={faListOl} />
+              </button>
             </div>
-            {/* Save Actions */}
+            {/* Save Actions (kept from your final version) */}
             <div className="editor-actions">
-              <div className="status-text" style={{marginRight: 10}}>{saving ? "Saving..." : status}</div>
-              <button className="primary-btn" onClick={handleSave} disabled={saving}>
-                <FontAwesomeIcon icon={faPen} /> {saving ? "Updating..." : "Update"}
+              <div className="status-text" style={{ marginRight: 10 }}>
+                {saving ? "Saving..." : status}
+              </div>
+              <button
+                className="primary-btn"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                <FontAwesomeIcon icon={faPen} />{" "}
+                {saving ? "Updating..." : "Update"}
               </button>
             </div>
           </div>
@@ -398,7 +572,11 @@ export default function NotesPage({ user }) {
                 value={draft.folder}
                 onChange={(e) => updateDraftField("folder", e.target.value)}
               >
-                {folderOptions.map((f) => (<option key={f.key} value={f.key}>{f.label}</option>))}
+                {folderOptions.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
               </select>
             </div>
             <textarea
