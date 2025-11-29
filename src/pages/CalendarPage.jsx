@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState } from "react";
+// src/pages/CalendarPage.jsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -7,23 +8,27 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronLeft, faChevronRight, faPlus } from "@fortawesome/free-solid-svg-icons";
 import dayjs from "dayjs";
 
+// Import service functions
+import { fetchEvents, createEvent } from "../services/calendar";
+
 const viewOptions = [
   { key: "timeGridDay", label: "Day" },
   { key: "timeGridWeek", label: "Week" },
   { key: "dayGridMonth", label: "Month" },
 ];
 
-const starterEvents = [];
 const palette = ["#c6e8ee", "#f7c8c8", "#fde68a", "#c7d2fe", "#a5f3fc"];
 
-export default function CalendarPage() {
+export default function CalendarPage({ user }) { // 🟢 Accept 'user' prop
   const calendarRef = useRef(null);
-  const [events, setEvents] = useState(starterEvents);
+  const [events, setEvents] = useState([]); // Start empty, fetch later
   const [activeView, setActiveView] = useState("timeGridDay");
   const [monthPicker, setMonthPicker] = useState(dayjs().format("YYYY-MM"));
   const [titleOverride, setTitleOverride] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false); // Loading state for save
+
   const [form, setForm] = useState({
     title: "",
     location: "",
@@ -34,15 +39,25 @@ export default function CalendarPage() {
     repeat: "none",
   });
 
+  // 🟢 FETCH EVENTS ON LOAD
+  useEffect(() => {
+    if (!user) return;
+    async function load() {
+      try {
+        const data = await fetchEvents();
+        setEvents(data);
+      } catch (e) {
+        console.error("Failed to load events", e);
+      }
+    }
+    load();
+  }, [user]);
+
   const timeOptions = Array.from({ length: 24 }, (_, i) => {
     const label = dayjs().hour(i).minute(0).format("hh:mm A");
     const value = dayjs().hour(i).minute(0).format("HH:mm");
     return { label, value };
   });
-
-  const addEventObjects = (items) => {
-    setEvents((prev) => [...prev, ...items]);
-  };
 
   const buildEvent = (title, dateStr, startTime, endTime, extra = {}) => {
     if (!title || !dateStr || !startTime || !endTime) return null;
@@ -69,39 +84,19 @@ export default function CalendarPage() {
       }
     };
 
+    // Your existing recurring logic...
     switch (repeat) {
-      case "hourly":
-        addBy("hour", 12);
-        break;
-      case "daily":
-        addBy("day", 12);
-        break;
-      case "weekdays":
-        addBy("day", 30, 1, (d) => d.day() >= 1 && d.day() <= 5);
-        break;
-      case "weekends":
-        addBy("day", 30, 1, (d) => d.day() === 0 || d.day() === 6);
-        break;
-      case "weekly":
-        addBy("week", 8);
-        break;
-      case "biweekly":
-        addBy("week", 8, 2);
-        break;
-      case "monthly":
-        addBy("month", 6);
-        break;
-      case "every3":
-        addBy("month", 4, 3);
-        break;
-      case "every6":
-        addBy("month", 2, 6);
-        break;
-      case "yearly":
-        addBy("year", 2);
-        break;
-      default:
-        occurrences.push(base);
+      case "hourly": addBy("hour", 12); break;
+      case "daily": addBy("day", 12); break;
+      case "weekdays": addBy("day", 30, 1, (d) => d.day() >= 1 && d.day() <= 5); break;
+      case "weekends": addBy("day", 30, 1, (d) => d.day() === 0 || d.day() === 6); break;
+      case "weekly": addBy("week", 8); break;
+      case "biweekly": addBy("week", 8, 2); break;
+      case "monthly": addBy("month", 6); break;
+      case "every3": addBy("month", 4, 3); break;
+      case "every6": addBy("month", 2, 6); break;
+      case "yearly": addBy("year", 2); break;
+      default: occurrences.push(base);
     }
 
     return occurrences;
@@ -129,25 +124,15 @@ export default function CalendarPage() {
     openModal(start.format("YYYY-MM-DD"), start.format("HH:mm"), end.format("HH:mm"));
   };
 
-  const goToPrev = () => {
-    const api = calendarRef.current?.getApi();
-    api?.prev();
-    syncMonthPicker();
-  };
-
-  const goToNext = () => {
-    const api = calendarRef.current?.getApi();
-    api?.next();
-    syncMonthPicker();
-  };
-
-  const changeView = (view) => {
-    const api = calendarRef.current?.getApi();
-    if (!api) return;
-    api.changeView(view);
-    setActiveView(view);
-    syncMonthPicker();
-  };
+  // ... (Navigation functions goToPrev, goToNext, changeView, etc. remain the same) ...
+  const goToPrev = () => { const api = calendarRef.current?.getApi(); api?.prev(); syncMonthPicker(); };
+  const goToNext = () => { const api = calendarRef.current?.getApi(); api?.next(); syncMonthPicker(); };
+  const changeView = (view) => { const api = calendarRef.current?.getApi(); if (!api) return; api.changeView(view); setActiveView(view); syncMonthPicker(); };
+  const goToday = () => { const api = calendarRef.current?.getApi(); api?.today(); syncMonthPicker(); };
+  const syncMonthPicker = () => { const api = calendarRef.current?.getApi(); if (!api) return; const current = api.getDate(); setMonthPicker(dayjs(current).format("YYYY-MM")); };
+  const handleMonthChange = (e) => { const value = e.target.value; setMonthPicker(value); const api = calendarRef.current?.getApi(); if (!api) return; const d = dayjs(value + "-01").toDate(); api.gotoDate(d); setTitleOverride(dayjs(d).format("MMMM YYYY")); };
+  const handleModalChange = (field, value) => { setForm((prev) => ({ ...prev, [field]: value })); };
+  const handleAddEventButton = () => { openModal(dayjs().format("YYYY-MM-DD"), dayjs().format("HH:00"), dayjs().add(1, "hour").format("HH:00")); };
 
   const currentTitle = useMemo(() => {
     if (titleOverride) return titleOverride;
@@ -156,52 +141,48 @@ export default function CalendarPage() {
     return dayjs(now).format("MMMM YYYY");
   }, [activeView, events, titleOverride, monthPicker]);
 
-  const handleAddEventButton = () => {
-    openModal(dayjs().format("YYYY-MM-DD"), dayjs().format("HH:00"), dayjs().add(1, "hour").format("HH:00"));
-  };
 
-  const goToday = () => {
-    const api = calendarRef.current?.getApi();
-    api?.today();
-    syncMonthPicker();
-  };
-
-  const syncMonthPicker = () => {
-    const api = calendarRef.current?.getApi();
-    if (!api) return;
-    const current = api.getDate();
-    setMonthPicker(dayjs(current).format("YYYY-MM"));
-  };
-
-  const handleMonthChange = (e) => {
-    const value = e.target.value;
-    setMonthPicker(value);
-    const api = calendarRef.current?.getApi();
-    if (!api) return;
-    const d = dayjs(value + "-01").toDate();
-    api.gotoDate(d);
-    setTitleOverride(dayjs(d).format("MMMM YYYY"));
-  };
-
-  const handleModalChange = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleSubmit = (e) => {
+  // 🟢 SAVE TO FIREBASE
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!user) return;
+
     const base = buildEvent(form.title.trim(), form.date, form.startTime, form.endTime, {
       location: form.location.trim(),
       notes: form.notes.trim(),
     });
+    
     if (!base) return;
+
+    // Generate all occurrences based on repeat rule
     const occurrences = createRecurring(base, form.repeat);
-    addEventObjects(occurrences);
-    setModalOpen(false);
+
+    try {
+      setSaving(true);
+      // Save all occurrences to Firebase in parallel
+      const promises = occurrences.map(evt => createEvent(evt));
+      const newDocs = await Promise.all(promises);
+      
+      // Update local state with the new events (including their Firestore IDs)
+      const newEvents = newDocs.map((docRef, index) => ({
+        id: docRef.id,
+        ...occurrences[index]
+      }));
+      
+      setEvents((prev) => [...prev, ...newEvents]);
+      setModalOpen(false);
+    } catch (err) {
+      console.error("Error saving event:", err);
+      alert("Failed to save event.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <>
       <div className="calendar-shell">
+        {/* ... (Header UI remains the same) ... */}
         <div className="calendar-header">
           <div>
             <div className="calendar-title">{currentTitle}</div>
@@ -219,16 +200,13 @@ export default function CalendarPage() {
                 </button>
               ))}
             </div>
-
             <div className="nav-arrows">
               <button className="ghost-btn" onClick={goToPrev}><FontAwesomeIcon icon={faChevronLeft} /></button>
               <button className="ghost-btn" onClick={goToNext}><FontAwesomeIcon icon={faChevronRight} /></button>
             </div>
-
             <div className="month-picker">
               <input type="month" value={monthPicker} onChange={handleMonthChange} />
             </div>
-
             <button className="add-event-btn" onClick={handleAddEventButton}>
               <FontAwesomeIcon icon={faPlus} /> Add Event
             </button>
@@ -241,7 +219,7 @@ export default function CalendarPage() {
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView={activeView}
             headerToolbar={false}
-            events={events}
+            events={events} // Linked to state which is synced with Firebase
             height="auto"
             selectable
             selectMirror
@@ -340,8 +318,10 @@ export default function CalendarPage() {
                 </select>
               </label>
               <div className="cal-actions">
-                <button type="button" className="ghost-btn" onClick={closeModal}>Cancel</button>
-                <button type="submit" className="add-event-btn solid">Save</button>
+                <button type="button" className="ghost-btn" onClick={closeModal} disabled={saving}>Cancel</button>
+                <button type="submit" className="add-event-btn solid" disabled={saving}>
+                  {saving ? "Saving..." : "Save"}
+                </button>
               </div>
             </form>
           </div>
