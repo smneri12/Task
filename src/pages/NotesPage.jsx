@@ -225,15 +225,32 @@ export default function NotesPage({ user }) {
     });
   }, [notes, activeFolder, mainSearch]);
 
-  const formatDate = (ms) => {
-    if (!ms) return "";
-    try {
-      const d = new Date(ms);
-      return d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
-    } catch {
-      return "";
-    }
-  };
+  const formatDate = (dateValue) => {
+  // 1. If date is missing/null, handle gracefully
+  if (!dateValue) return "";
+
+  let ms;
+
+  // 2. Check if it's a Firestore Timestamp (has a .toDate() method)
+  if (typeof dateValue === 'object' && typeof dateValue.toDate === 'function') {
+    ms = dateValue.toDate().getTime(); 
+  } 
+  // 3. Check if it's already a number (client-side Date.now())
+  else if (typeof dateValue === 'number') {
+    ms = dateValue;
+  } 
+  // 4. Fallback for unknown formats
+  else {
+    return ""; 
+  }
+
+  try {
+    const d = new Date(ms);
+    return d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  } catch (e) {
+    return "";
+  }
+};
 
   const updateDraftField = (field, value) => {
     setDraft((prev) => ({ ...prev, [field]: value }));
