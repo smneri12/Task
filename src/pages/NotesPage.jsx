@@ -1,5 +1,6 @@
 // src/pages/NotesPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSearch,
@@ -75,6 +76,7 @@ const headingOptions = [
 
 // FINAL VERSION + USER PROP
 export default function NotesPage({ user }) {
+  const navigate = useNavigate();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
@@ -137,7 +139,12 @@ export default function NotesPage({ user }) {
 
   // handleCreate now matches version 1 layout (multiple create types),
   // but still uses your final-version Firestore + user logic.
-  const handleCreate = async (typeLabel = "Note") => {
+  const handleCreate = async (typeLabel = "Note", typeKey = "note") => {
+    if (typeKey === "calendar") {
+      navigate("/calendar");
+      return;
+    }
+
     if (!user || !user.uid) {
       setStatus("Error: Must be signed in to create a document.");
       return;
@@ -340,7 +347,7 @@ export default function NotesPage({ user }) {
       <div className="notes-header">
         <div className="header-left">
           <h1>Notes</h1>
-<button className="cta-new-wide" onClick={() => handleCreate("Note")}>
+<button className="cta-new-wide" onClick={() => handleCreate("Note", "note")}>
   <span className="pill">NEW NOTE</span>
   Write your next big idea...
 </button>
@@ -370,7 +377,7 @@ export default function NotesPage({ user }) {
             </select>
           </div>
 
-          <button className="new-message" onClick={() => handleCreate("Message")}>
+          <button className="new-message" onClick={() => handleCreate("Message", "message")}>
             <FontAwesomeIcon icon={faPaperPlane} /> New message
           </button>
 
@@ -388,7 +395,7 @@ export default function NotesPage({ user }) {
                   <button
                     key={opt.key}
                     className="create-menu-item"
-                    onClick={() => handleCreate(opt.label)}
+                    onClick={() => handleCreate(opt.label, opt.key)}
                   >
                     {opt.label}
                   </button>
@@ -591,7 +598,7 @@ export default function NotesPage({ user }) {
                 color: formatting.color,
                 backgroundColor: formatting.highlight ? "#fffbe6" : "#fff",
               }}
-              placeholder="Start writing like in Google Docs — free type with your tools above."
+              placeholder="Start writing your thoughts... Freely type with your tools above."
             />
           </div>
         </div>
