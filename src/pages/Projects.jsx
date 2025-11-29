@@ -22,16 +22,33 @@ import {
 } from "../services/projects";
 import { fetchNotes, updateNoteFirestore } from "../services/notes";
 
-// ---- small helpers ----
+// ---- HELPER FUNCTIONS (FIXED FOR FIRESTORE TIMESTAMPS) ----
+
 function statusPillClass(status) {
   if (!status) return "pill";
   const key = status.toLowerCase().replace(/\s+/g, "");
   return `pill status-${key}`;
 }
 
+// Helper to safely get milliseconds from number or Timestamp
+function getMillis(val) {
+  if (!val) return null;
+  // If it's a Firestore Timestamp (object with toDate)
+  if (typeof val === 'object' && typeof val.toDate === 'function') {
+    return val.toDate().getTime();
+  }
+  // If it's already a number
+  if (typeof val === 'number') {
+    return val;
+  }
+  return null;
+}
+
 function formatDueDate(dueDate) {
-  if (!dueDate) return "No due date";
-  const d = new Date(dueDate);
+  const ms = getMillis(dueDate);
+  if (!ms) return "No due date";
+  
+  const d = new Date(ms);
   return d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -40,8 +57,11 @@ function formatDueDate(dueDate) {
 }
 
 function formatUpdated(updatedAt, createdAt) {
-  const ms = updatedAt || createdAt;
+  // Try updatedAt, fallback to createdAt
+  const ms = getMillis(updatedAt) || getMillis(createdAt);
+  
   if (!ms) return "just now";
+  
   const d = new Date(ms);
   return d.toLocaleDateString(undefined, {
     month: "short",
@@ -49,16 +69,21 @@ function formatUpdated(updatedAt, createdAt) {
   });
 }
 
-function toDateInputValue(ms) {
+function toDateInputValue(val) {
+  const ms = getMillis(val);
   if (!ms) return "";
   const d = new Date(ms);
+  // Returns YYYY-MM-DD for input type="date"
   return d.toISOString().slice(0, 10);
 }
 
 function fromDateInputValue(value) {
   if (!value) return null;
+  // Convert YYYY-MM-DD string back to timestamp (ms)
   return new Date(value + "T00:00:00").getTime();
 }
+
+// ---- COMPONENT ----
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -67,8 +92,8 @@ export default function ProjectsPage() {
   const [notesLoading, setNotesLoading] = useState(true);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All"); // All | Active | Done | Archived
-  const [categoryFilter, setCategoryFilter] = useState("All"); // All | School | Work | Personal
+  const [statusFilter, setStatusFilter] = useState("All"); 
+  const [categoryFilter, setCategoryFilter] = useState("All"); 
 
   const [newProjectName, setNewProjectName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -220,7 +245,7 @@ export default function ProjectsPage() {
 
   return (
     <div>
-      {/* HEADER (matches your notes header styling) */}
+      {/* HEADER */}
       <div className="notes-header">
         <h1>Projects</h1>
         <div className="header-actions">
@@ -264,7 +289,7 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* NEW PROJECT ROW (under title, above status text) */}
+      {/* NEW PROJECT ROW */}
       <div className="new-project-row">
         <form onSubmit={handleCreateProject} className="new-project-inline">
           <input
