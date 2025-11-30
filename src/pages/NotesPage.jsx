@@ -32,13 +32,15 @@ import "../index.css";
 
 // --- STATIC DATA ---
 // Folder choices used by header + editor
+// Which folders exist in the workspace
 const folderOptions = [
+  { key: "All", label: "All" },
   { key: "Inbox", label: "Inbox" },
   { key: "School", label: "School" },
   { key: "Work", label: "Work" },
   { key: "Personal", label: "Personal" },
-  { key: "All", label: "All" },
 ];
+
 
 // Normalize folder values so 'school', ' School ' etc. all behave the same
 const normalizeFolder = (value) =>
@@ -409,19 +411,22 @@ const openNote = (noteId) => {
             <FontAwesomeIcon icon={faSearch} />
           </div>
 
-          <div className="folder-switch">
-            <span>Folder</span>
-            <select
-              value={activeFolder}
-              onChange={(e) => setActiveFolder(e.target.value)}
-            >
-              {folderOptions.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </div>
+<div className="folder-switch">
+  <span>Folder</span>
+  <select
+    value={activeFolder}
+    onChange={(e) => setActiveFolder(e.target.value)}
+  >
+    {folderOptions
+      .filter((f) => f.key !== "Inbox") // 🔥 hide Inbox from this dropdown
+      .map((f) => (
+        <option key={f.key} value={f.key}>
+          {f.label}
+        </option>
+      ))}
+  </select>
+</div>
+
 
           <button className="new-message" onClick={() => handleCreate("Message", "message")}>
             <FontAwesomeIcon icon={faPaperPlane} /> New message
