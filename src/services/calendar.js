@@ -6,7 +6,10 @@ import {
   getDocs,
   query,
   where,
-  serverTimestamp
+  serverTimestamp,
+  doc,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 
 const COLLECTION = "events";
@@ -22,11 +25,11 @@ export async function fetchEvents() {
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => {
-    const data = doc.data();
+  return snapshot.docs.map((docSnap) => {
+    const data = docSnap.data();
     // Convert Firestore Timestamps back to JS Dates/Strings for FullCalendar
     return {
-      id: doc.id,
+      id: docSnap.id,
       ...data,
       start: data.start?.toDate ? data.start.toDate() : data.start,
       end: data.end?.toDate ? data.end.toDate() : data.end,
@@ -34,23 +37,89 @@ export async function fetchEvents() {
   });
 }
 
-// Create a new event (or a batch of recurring events)
+// Create a new event (generic helper used by CalendarPage)
 export async function createEvent(eventData) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not logged in");
 
-  // If you are creating multiple events at once (recurring), handle them in a loop
-  // For simplicity, this function handles one event object at a time.
-  // You can call this in a loop from the UI for recurring events.
-  
   return await addDoc(collection(db, COLLECTION), {
     userId: user.uid,
     title: eventData.title,
-    start: eventData.start, // Pass JS Date object
-    end: eventData.end,     // Pass JS Date object
+    start: eventData.start, // JS Date object
+    end: eventData.end,     // JS Date object
     color: eventData.color || "#3788d8",
     location: eventData.location || "",
     notes: eventData.notes || "",
     createdAt: serverTimestamp(),
   });
+}
+
+/**
+ * Create or update a single all-day calendar event
+ * representing a project's due date.
+ */
+export async function upsertProjectEvent(project) {
+  const user = auth.currentUser;
+  if (!user || !project || !project.dueDate) return;
+
+  // Handle both Firestore Timestamp and number (ms)
+  const due = project.dueDate?.toDate
+    ? project.dueDate.toDate()
+    : new Date(project.dueDate);
+
+  // Look for an existing event for this project
+  const q = query(
+    collection(db, COLLECTION),
+    where("userId", "==", user.uid),
+    where("projectId", "==", project.id)
+  );
+  const snap = await getDocs(q);
+
+  if (snap.empty) {
+    // No event yet → create one
+    await addDoc(collection(db, COLLECTION), {
+      userId: user.uid,
+      projectId: project.id,
+      title: project.name || "Project due",
+      start: due,
+      end: due,
+      allDay: true,
+      color: "#c7d2fe",
+      location: "",
+      notes: project.description || "",
+      createdAt: serverTimestamp(),
+    });
+  } else {
+    // Update the first matching event (should be only one)
+    const docSnap = snap.docs[0];
+    const ref = doc(db, COLLECTION, docSnap.id);
+    await updateDoc(ref, {
+      title: project.name || "Project due",
+      start: due,
+      end: due,
+      allDay: true,
+      projectId: project.id,
+      notes: project.description || "",
+    });
+  }
+}
+
+/**
+ * Delete all calendar events linked to a project.
+ */
+export async function deleteProjectEvents(projectId) {
+  const user = auth.currentUser;
+  if (!user || !projectId) return;
+
+  const q = query(
+    collection(db, COLLECTION),
+    where("userId", "==", user.uid),
+    where("projectId", "==", projectId)
+  );
+
+  const snap = await getDocs(q);
+  const deletes = snap.docs.map((docSnap) =>
+    deleteDoc(doc(db, COLLECTION, docSnap.id))
+  );
+  await Promise.all(deletes);
 }
