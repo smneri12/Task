@@ -21,8 +21,12 @@ import {
   deleteProject,
 } from "../services/projects";
 import { fetchNotes, updateNoteFirestore } from "../services/notes";
+import {
+  upsertProjectEvent,
+  deleteProjectEvents,
+} from "../services/calendar";
 
-// ---- HELPER FUNCTIONS (FIXED FOR FIRESTORE TIMESTAMPS) ----
+// ---- HELPER FUNCTIONS ----
 
 function statusPillClass(status) {
   if (!status) return "pill";
@@ -34,11 +38,11 @@ function statusPillClass(status) {
 function getMillis(val) {
   if (!val) return null;
   // If it's a Firestore Timestamp (object with toDate)
-  if (typeof val === 'object' && typeof val.toDate === 'function') {
+  if (typeof val === "object" && typeof val.toDate === "function") {
     return val.toDate().getTime();
   }
   // If it's already a number
-  if (typeof val === 'number') {
+  if (typeof val === "number") {
     return val;
   }
   return null;
@@ -47,7 +51,7 @@ function getMillis(val) {
 function formatDueDate(dueDate) {
   const ms = getMillis(dueDate);
   if (!ms) return "No due date";
-  
+
   const d = new Date(ms);
   return d.toLocaleDateString(undefined, {
     month: "short",
@@ -59,9 +63,9 @@ function formatDueDate(dueDate) {
 function formatUpdated(updatedAt, createdAt) {
   // Try updatedAt, fallback to createdAt
   const ms = getMillis(updatedAt) || getMillis(createdAt);
-  
+
   if (!ms) return "just now";
-  
+
   const d = new Date(ms);
   return d.toLocaleDateString(undefined, {
     month: "short",
@@ -69,18 +73,33 @@ function formatUpdated(updatedAt, createdAt) {
   });
 }
 
+// Build YYYY-MM-DD string for <input type="date"> using LOCAL time
 function toDateInputValue(val) {
   const ms = getMillis(val);
   if (!ms) return "";
   const d = new Date(ms);
-  // Returns YYYY-MM-DD for input type="date"
-  return d.toISOString().slice(0, 10);
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function fromDateInputValue(value) {
   if (!value) return null;
-  // Convert YYYY-MM-DD string back to timestamp (ms)
   return new Date(value + "T00:00:00").getTime();
+}
+
+// Prefer updatedAt over createdAt when sorting notes
+function noteTimestamp(note) {
+  return getMillis(note?.updatedAt) || getMillis(note?.createdAt) || 0;
+}
+
+function truncate(text, maxLength = 80) {
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + "…";
 }
 
 // ---- COMPONENT ----
@@ -92,14 +111,21 @@ export default function ProjectsPage() {
   const [notesLoading, setNotesLoading] = useState(true);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All"); 
-  const [categoryFilter, setCategoryFilter] = useState("All"); 
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
 
   const [newProjectName, setNewProjectName] = useState("");
   const [creating, setCreating] = useState(false);
 
   const [selectedProject, setSelectedProject] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+    const [statusMessage, setStatusMessage] = useState("");
+
+  const showStatus = (text) => {
+    setStatusMessage(text);
+    setTimeout(() => setStatusMessage(""), 2000); // fades after 2s
+  };
 
   // ---- initial load ----
   useEffect(() => {
@@ -122,7 +148,7 @@ export default function ProjectsPage() {
     load();
   }, []);
 
-  // ---- derived counts ----
+  // ---- derived counts + previews ----
   const notesByProject = useMemo(() => {
     const map = {};
     notes.forEach((n) => {
@@ -130,6 +156,26 @@ export default function ProjectsPage() {
       map[n.projectId] = (map[n.projectId] || 0) + 1;
     });
     return map;
+  }, [notes]);
+
+  // for each project, up to 2 latest linked notes
+  const previewNotesByProject = useMemo(() => {
+    const buckets = {};
+    notes.forEach((n) => {
+      if (!n.projectId) return;
+      const arr = buckets[n.projectId] || [];
+      arr.push(n);
+      buckets[n.projectId] = arr;
+    });
+
+    Object.keys(buckets).forEach((projectId) => {
+      buckets[projectId] = buckets[projectId]
+        .slice()
+        .sort((a, b) => noteTimestamp(b) - noteTimestamp(a))
+        .slice(0, 2);
+    });
+
+    return buckets;
   }, [notes]);
 
   const filteredProjects = useMemo(() => {
@@ -173,12 +219,33 @@ export default function ProjectsPage() {
     }
   }
 
+  /**
+   * Generic field update for a project.
+   * Keeps:
+   *  - projects list
+   *  - selectedProject detail panel
+   *  - Firestore document
+   *  - project calendar event (for due date / name)
+   * all in sync.
+   */
   async function handleProjectFieldChange(id, field, value) {
+    const current = projects.find((p) => p.id === id) || {};
+    const updatedProject = { ...current, [field]: value };
+
     setProjects((prev) =>
       prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
     );
+
+    setSelectedProject((prev) =>
+      prev && prev.id === id ? { ...prev, [field]: value } : prev
+    );
+
     try {
       await updateProject(id, { [field]: value });
+
+      if ((field === "dueDate" || field === "name") && updatedProject.dueDate) {
+        await upsertProjectEvent(updatedProject);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -193,11 +260,16 @@ export default function ProjectsPage() {
   }
 
   async function handleDeleteProject(project) {
-    if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`))
+    if (
+      !window.confirm(
+        `Delete project "${project.name}"? This cannot be undone.`
+      )
+    )
       return;
     try {
       setDeleting(true);
       await deleteProject(project.id);
+      await deleteProjectEvents(project.id);
       setProjects((prev) => prev.filter((p) => p.id !== project.id));
       setSelectedProject(null);
     } catch (e) {
@@ -310,80 +382,108 @@ export default function ProjectsPage() {
         </form>
       </div>
 
-      <p className="status-text projects-status-line">
-        {loading
-          ? "Loading projects…"
-          : filteredProjects.length
-          ? `${filteredProjects.length} project(s)`
-          : "No projects yet — create one to bundle multiple related notes into a folder."}
-      </p>
+<p className="status-text projects-status-line">
+  {loading
+    ? "Loading projects…"
+    : filteredProjects.length
+    ? `${filteredProjects.length} project(s)`
+    : "No projects yet — create one to bundle multiple related notes into a folder."}
+  {statusMessage && <> · {statusMessage}</>}
+</p>
+
 
       {/* GRID */}
       <div className="projects-grid">
-        {filteredProjects.map((project) => (
-          <button
-            key={project.id}
-            type="button"
-            className="project-card"
-            onClick={() => setSelectedProject(project)}
-          >
-            <div className="project-card-header">
-              <div>
-                <div className="project-title">{project.name}</div>
-                <div className="project-meta-row" style={{ marginTop: 4 }}>
-                  <span className="pill">
-                    <FontAwesomeIcon icon={faFolder} />{" "}
-                    {project.category || "Personal"}
-                  </span>
-                  <span className={statusPillClass(project.status || "Planning")}>
-                    {project.status || "Planning"}
-                  </span>
-                  {project.pinned && (
+        {filteredProjects.map((project) => {
+          const previews = previewNotesByProject[project.id] || [];
+          return (
+            <button
+              key={project.id}
+              type="button"
+              className="project-card"
+              onClick={() => setSelectedProject(project)}
+            >
+              <div className="project-card-header">
+                <div>
+                  <div className="project-title">{project.name}</div>
+                  <div className="project-meta-row" style={{ marginTop: 4 }}>
                     <span className="pill">
-                      <FontAwesomeIcon icon={faStar} /> Pinned
+                      <FontAwesomeIcon icon={faFolder} />{" "}
+                      {project.category || "Personal"}
                     </span>
-                  )}
-                  {project.archived && (
-                    <span className="pill">
-                      <FontAwesomeIcon icon={faArchive} /> Archived
+                    <span
+                      className={statusPillClass(project.status || "Planning")}
+                    >
+                      {project.status || "Planning"}
                     </span>
-                  )}
+                    {project.archived && (
+                      <span className="pill">
+                        <FontAwesomeIcon icon={faArchive} /> Archived
+                      </span>
+                    )}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTogglePinned(project);
+                  }}
+                >
+                  <FontAwesomeIcon
+                    icon={faStar}
+                    style={{ opacity: project.pinned ? 1 : 0.3 }}
+                  />
+                </button>
               </div>
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleTogglePinned(project);
-                }}
-              >
-                <FontAwesomeIcon
-                  icon={faStar}
-                  style={{ opacity: project.pinned ? 1 : 0.3 }}
-                />
-              </button>
-            </div>
 
-            <div className="project-meta-row">
-              <span>
-                <FontAwesomeIcon icon={faCalendarAlt} />{" "}
-                {formatDueDate(project.dueDate)}
-              </span>
-              <span>
-                <FontAwesomeIcon icon={faStickyNote} />{" "}
-                {notesByProject[project.id] || 0} notes
-              </span>
-            </div>
+<div className="project-meta-row">
+  <span>
+    <FontAwesomeIcon icon={faCalendarAlt} />{" "}
+    {formatDueDate(project.dueDate)}
+  </span>
+  <span>
+    <FontAwesomeIcon icon={faStickyNote} />{" "}
+    {notesByProject[project.id] || 0} notes
+  </span>
+</div>
 
-            <div className="project-footer-row">
-              <span>
-                Updated {formatUpdated(project.updatedAt, project.createdAt)}
-              </span>
-              <FontAwesomeIcon icon={faChevronRight} />
-            </div>
-          </button>
-        ))}
+{project.description && (
+  <div className="project-card-description">
+    {truncate(project.description, 90)}
+  </div>
+)}
+
+{/* Quick preview of linked notes */}
+{previews.length > 0 && (
+  <div className="project-card-notes">
+    {previews.map((note) => (
+      <div key={note.id} className="project-card-note-line">
+        <span className="project-card-note-title">
+          {note.title || "Untitled note"}
+        </span>
+        {note.content && (
+          <span className="project-card-note-snippet">
+            {" — "}
+            {truncate(note.content, 70)}
+          </span>
+        )}
+      </div>
+    ))}
+  </div>
+)}
+
+
+              <div className="project-footer-row">
+                <span>
+                  Updated {formatUpdated(project.updatedAt, project.createdAt)}
+                </span>
+                <FontAwesomeIcon icon={faChevronRight} />
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {/* DETAIL PANEL */}
@@ -437,6 +537,7 @@ export default function ProjectsPage() {
                 <FontAwesomeIcon icon={faStar} style={{ marginRight: 6 }} />
                 {selectedProject.pinned ? "Unpin" : "Pin"}
               </button>
+
               <button
                 className="ghost-btn"
                 type="button"
@@ -445,6 +546,7 @@ export default function ProjectsPage() {
                 <FontAwesomeIcon icon={faArchive} style={{ marginRight: 6 }} />
                 {selectedProject.archived ? "Unarchive" : "Archive"}
               </button>
+
               <button
                 className="ghost-btn"
                 type="button"
@@ -454,13 +556,28 @@ export default function ProjectsPage() {
                 <FontAwesomeIcon icon={faTrash} style={{ marginRight: 6 }} />
                 Delete
               </button>
+
+              {/* Big Save button just closes the panel (edits auto-save) */}
               <button
                 className="primary-btn"
                 type="button"
+                  onClick={() => {
+    showStatus("Project saved");
+    setSelectedProject(null);
+  }}
+
+              >
+                Save
+              </button>
+
+              {/* Small X button in the corner */}
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Close"
                 onClick={() => setSelectedProject(null)}
               >
-                <FontAwesomeIcon icon={faTimes} style={{ marginRight: 6 }} />
-                Close
+                <FontAwesomeIcon icon={faTimes} />
               </button>
             </div>
           </div>
@@ -543,9 +660,15 @@ export default function ProjectsPage() {
             <div className="project-section">
               <div className="project-section-header">
                 <div className="project-section-title">
-                  Notes in this project ({linkedNotes.length})
+                  Linked notes ({linkedNotes.length})
                 </div>
               </div>
+
+              <p className="status-text" style={{ marginBottom: 8 }}>
+                Attach notes from your Notes tab so everything for this project
+                stays together. Unlinking a note here does not delete it — it
+                just removes the connection.
+              </p>
 
               <div className="project-notes-list">
                 {linkedNotes.map((note) => (
@@ -563,13 +686,13 @@ export default function ProjectsPage() {
                       className="remove"
                       onClick={() => handleDetachNote(note)}
                     >
-                      Remove
+                      Unlink
                     </button>
                   </div>
                 ))}
                 {!linkedNotes.length && (
                   <div className="status-text">
-                    No notes linked yet. Add some below.
+                    No notes linked yet. Choose some from your workspace below.
                   </div>
                 )}
               </div>
@@ -579,7 +702,7 @@ export default function ProjectsPage() {
                   className="project-section-title"
                   style={{ fontSize: 13, marginBottom: 6 }}
                 >
-                  Add existing note to this project
+                  Link existing notes from your workspace
                 </div>
                 <div className="project-notes-list">
                   {notesLoading && (
@@ -587,7 +710,7 @@ export default function ProjectsPage() {
                   )}
                   {!notesLoading && unlinkedNotes.length === 0 && (
                     <div className="status-text">
-                      All your notes are already linked to projects.
+                      All of your notes are already linked to projects.
                     </div>
                   )}
                   {!notesLoading &&
@@ -597,12 +720,15 @@ export default function ProjectsPage() {
                           <div style={{ fontWeight: 600 }}>
                             {note.title || "Untitled note"}
                           </div>
+                          <div className="status-text">
+                            {note.folder ? `Folder: ${note.folder}` : "No folder"}
+                          </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleAttachNote(note)}
                         >
-                          Add
+                          Link
                         </button>
                       </div>
                     ))}
