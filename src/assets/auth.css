@@ -227,9 +227,10 @@
 /* FOOTER TEXT ---------------------------------------------------- */
 
 .auth-switch {
-  margin-top: 8px;
+  margin-top: 12px;
   font-size: 13px;
   color: #6b7280;
+  text-align: center;      /* 👈 centers "or Sign up" */
 }
 
 .auth-switch a {
