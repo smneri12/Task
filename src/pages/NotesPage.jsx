@@ -1,4 +1,3 @@
-// src/pages/NotesPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -20,7 +19,6 @@ import {
   faArrowLeft,
   faEllipsisV,
   faChevronDown,
-  faPaperPlane,
 } from "@fortawesome/free-solid-svg-icons";
 import {
   fetchNotes,
@@ -31,36 +29,32 @@ import {
 import "../index.css";
 
 // --- STATIC DATA ---
-// Folder choices used by header + editor
-// Which folders exist in the workspace
 const folderOptions = [
-  { key: "All", label: "All" },
-  { key: "Inbox", label: "Inbox" },
   { key: "School", label: "School" },
   { key: "Work", label: "Work" },
   { key: "Personal", label: "Personal" },
+  { key: "All", label: "All" },
 ];
 
+const fallbackFolderKey = "School";
 
 // Normalize folder values so 'school', ' School ' etc. all behave the same
 const normalizeFolder = (value) =>
-  (value || "Inbox").toString().trim().toLowerCase();
+  (value || fallbackFolderKey).toString().trim().toLowerCase();
 
 const canonicalFolder = (value) => {
   const key = normalizeFolder(value);
-  if (key === "inbox") return "Inbox";
   if (key === "school") return "School";
   if (key === "work") return "Work";
   if (key === "personal") return "Personal";
-  if (key === "all") return "Inbox"; // treat "All" like Inbox when saving
-  // default fallback
-  return "Inbox";
+  if (key === "all") return "All";
+  return fallbackFolderKey;
 };
 
 const quickCreateOptions = [
-  { key: "note", label: "Note", path: "/notes" },
+  { key: "note", label: "Note" },
   { key: "tasks", label: "Tasks", path: "/tasks" },
-  { key: "calendar", label: "Calendar (events)", path: "/calendar" },
+  { key: "calendar", label: "Calendar", path: "/calendar" },
   { key: "projects", label: "Projects", path: "/projects" },
 ];
 
@@ -106,7 +100,7 @@ export default function NotesPage({ user }) {
   const [draft, setDraft] = useState({
     title: "",
     content: "",
-    folder: "Inbox",
+    folder: fallbackFolderKey,
   });
   const [formatting, setFormatting] = useState(defaultFormatting);
   const [saving, setSaving] = useState(false);
@@ -138,7 +132,7 @@ export default function NotesPage({ user }) {
 
   // --- Handlers ---
 const openNote = (noteId) => {
-  const note = notes.find((n) => n.id === noteId);
+  const note = notes.find(👎 => n.id === noteId);
   if (!note) return;
   setSelectedNoteId(noteId);
   setDraft({
@@ -153,7 +147,11 @@ const openNote = (noteId) => {
 
   const closeEditor = () => {
     setSelectedNoteId(null);
-    setDraft({ title: "", content: "", folder: activeFolder });
+    setDraft({
+      title: "",
+      content: "",
+      folder: activeFolder === "All" ? fallbackFolderKey : activeFolder,
+    });
     setFormatting(defaultFormatting);
   };
 
@@ -170,10 +168,10 @@ const openNote = (noteId) => {
       return;
     }
 
-    const fallbackFolder = "Inbox";
-    const folder = canonicalFolder(
-      activeFolder === "All" ? fallbackFolder : activeFolder
-    );
+    const folder =
+      activeFolder === "All"
+        ? fallbackFolderKey
+        : canonicalFolder(activeFolder);
 
     const payload = {
       title: typeLabel === "Note" ? "New doc" : typeLabel,
@@ -195,7 +193,7 @@ const openNote = (noteId) => {
       setNotes((prev) => [newNote, ...prev]);
       openNote(ref.id);
       const createdMsg =
-        typeLabel === "Note" ? "New document created." : `${typeLabel} created.`;
+        typeLabel === "Note" ? "New document created." : ${typeLabel} created.;
       setStatus(createdMsg);
       setCreateMenuOpen(false);
     } catch (err) {
@@ -207,7 +205,7 @@ const openNote = (noteId) => {
   const handleDeleteNote = async (id) => {
     try {
       await deleteNoteFirestore(id);
-      setNotes((prev) => prev.filter((n) => n.id !== id));
+      setNotes((prev) => prev.filter(👎 => n.id !== id));
       if (selectedNoteId === id) {
         closeEditor();
       }
@@ -230,7 +228,7 @@ const openNote = (noteId) => {
       await updateNoteFirestore(selectedNoteId, payload);
 
       setNotes((prev) =>
-        prev.map((n) => (n.id === selectedNoteId ? { ...n, ...payload } : n))
+        prev.map(👎 => (n.id === selectedNoteId ? { ...n, ...payload } : n))
       );
       setStatus("Saved");
     } catch (err) {
@@ -249,7 +247,7 @@ const openNote = (noteId) => {
         activeFolder === "All" ||
         normalizeFolder(note.folder) === normalizeFolder(activeFolder);
 
-      const text = `${note.title || ""} ${note.content || ""}`.toLowerCase();
+      const text = ${note.title || ""} ${note.content || ""}.toLowerCase();
       const searchMatch = !query || text.includes(query);
       return folderMatch && searchMatch;
     });
@@ -286,7 +284,7 @@ const openNote = (noteId) => {
   const updateDraftField = (field, value) => {
     setDraft((prev) => ({ ...prev, [field]: value }));
     setNotes((prev) =>
-      prev.map((n) => (n.id === selectedNoteId ? { ...n, [field]: value } : n))
+      prev.map(👎 => (n.id === selectedNoteId ? { ...n, [field]: value } : n))
     );
   };
 
@@ -337,7 +335,7 @@ const openNote = (noteId) => {
     const trimmed = draft.content.trim();
     setDraft((prev) => ({ ...prev, content: trimmed }));
     setNotes((prev) =>
-      prev.map((n) =>
+      prev.map(👎 =>
         n.id === selectedNoteId ? { ...n, content: trimmed } : n
       )
     );
@@ -347,11 +345,11 @@ const openNote = (noteId) => {
     const base =
       draft.content.endsWith("\n") || draft.content.length === 0
         ? draft.content
-        : `${draft.content}\n`;
-    const updated = `${base}- `;
+        : ${draft.content}\n;
+    const updated = ${base}- ;
     setDraft((prev) => ({ ...prev, content: updated }));
     setNotes((prev) =>
-      prev.map((n) =>
+      prev.map(👎 =>
         n.id === selectedNoteId ? { ...n, content: updated } : n
       )
     );
@@ -363,11 +361,11 @@ const openNote = (noteId) => {
     const base =
       draft.content.endsWith("\n") || draft.content.length === 0
         ? draft.content
-        : `${draft.content}\n`;
-    const updated = `${base}${next}. `;
+        : ${draft.content}\n;
+    const updated = ${base}${next}. ;
     setDraft((prev) => ({ ...prev, content: updated }));
     setNotes((prev) =>
-      prev.map((n) =>
+      prev.map(👎 =>
         n.id === selectedNoteId ? { ...n, content: updated } : n
       )
     );
@@ -383,7 +381,7 @@ const openNote = (noteId) => {
     );
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${(note.title || "note").replace(/\s+/g, "_")}.txt`;
+    link.download = ${(note.title || "note").replace(/\s+/g, "_")}.txt;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -395,10 +393,13 @@ const openNote = (noteId) => {
       <div className="notes-header">
         <div className="header-left">
           <h1>Notes</h1>
-<button className="cta-new-wide" onClick={() => handleCreate("Note", "note")}>
-  <span className="pill">NEW NOTE</span>
-  Write your next big idea...
-</button>
+          <button
+            className="cta-new-wide"
+            onClick={() => handleCreate("Note", "note")}
+          >
+            <span className="pill">NEW NOTE</span>
+            Write your next big idea...
+          </button>
 
         </div>
         <div className="header-actions">
@@ -411,26 +412,19 @@ const openNote = (noteId) => {
             <FontAwesomeIcon icon={faSearch} />
           </div>
 
-<div className="folder-switch">
-  <span>Folder</span>
-  <select
-    value={activeFolder}
-    onChange={(e) => setActiveFolder(e.target.value)}
-  >
-    {folderOptions
-      .filter((f) => f.key !== "Inbox") // 🔥 hide Inbox from this dropdown
-      .map((f) => (
-        <option key={f.key} value={f.key}>
-          {f.label}
-        </option>
-      ))}
-  </select>
-</div>
-
-
-          <button className="new-message" onClick={() => handleCreate("Message", "message")}>
-            <FontAwesomeIcon icon={faPaperPlane} /> New message
-          </button>
+          <div className="folder-switch">
+            <span>Folder</span>
+            <select
+              value={activeFolder}
+              onChange={(e) => setActiveFolder(e.target.value)}
+            >
+              {folderOptions.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="new-doc-dropdown">
             <button
@@ -442,18 +436,22 @@ const openNote = (noteId) => {
             </button>
             {createMenuOpen && (
               <div className="create-menu">
-      {quickCreateOptions.map((opt) => (
-        <button
-          key={opt.key}
-          className="create-menu-item"
-          onClick={() => {
-            navigate(opt.path);       // 🔀 go to the right page
-            setCreateMenuOpen(false); // close dropdown
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
+                {quickCreateOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    className="create-menu-item"
+                    onClick={() => {
+                      if (opt.key === "note") {
+                        handleCreate("Note", "note");
+                      } else if (opt.path) {
+                        navigate(opt.path);
+                        setCreateMenuOpen(false);
+                      }
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -638,9 +636,9 @@ const openNote = (noteId) => {
     // ALSO move the workspace to that tab
     setActiveFolder(value);
   }}
->
+
   {folderOptions
-    .filter((f) => f.key !== "Inbox" && f.key !== "All") // 🔥 no Inbox, no All
+    .filter((f) => f.key !== "All") // 🔥 no Inbox, no All
     .map((f) => (
       <option key={f.key} value={f.key}>
         {f.label}
@@ -671,3 +669,7 @@ const openNote = (noteId) => {
     </>
   );
 }
+
+
+
+
