@@ -1,5 +1,6 @@
 // src/pages/NotesPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSearch,
@@ -19,7 +20,6 @@ import {
   faArrowLeft,
   faEllipsisV,
   faChevronDown,
-  faPaperPlane,
 } from "@fortawesome/free-solid-svg-icons";
 import {
   fetchNotes,
@@ -31,20 +31,34 @@ import "../index.css";
 
 // --- STATIC DATA ---
 const folderOptions = [
-  { key: "Inbox", label: "Inbox" },
   { key: "School", label: "School" },
   { key: "Work", label: "Work" },
   { key: "Personal", label: "Personal" },
   { key: "All", label: "All" },
 ];
 
+const fallbackFolderKey = "School";
+
+// Normalize folder values so 'school', ' School ' etc. all behave the same
+const normalizeFolder = (value) =>
+  (value || fallbackFolderKey).toString().trim().toLowerCase();
+
+const canonicalFolder = (value) => {
+  const key = normalizeFolder(value);
+  if (key === "school") return "School";
+  if (key === "work") return "Work";
+  if (key === "personal") return "Personal";
+  if (key === "all") return "All";
+  return fallbackFolderKey;
+};
+
 const quickCreateOptions = [
-  { key: "message", label: "Message" },
   { key: "note", label: "Note" },
-  { key: "calendar", label: "Calendar" },
-  { key: "project", label: "Project" },
-  { key: "all", label: "All notes" },
+  { key: "tasks", label: "Tasks", path: "/tasks" },
+  { key: "calendar", label: "Calendar", path: "/calendar" },
+  { key: "projects", label: "Projects", path: "/projects" },
 ];
+
 
 const defaultFormatting = {
   fontSize: "16px",
@@ -73,20 +87,21 @@ const headingOptions = [
   { value: "body", label: "Body", fontSize: "16px", fontWeight: "400" },
 ];
 
+
 // FINAL VERSION + USER PROP
 export default function NotesPage({ user }) {
+  const navigate = useNavigate();
+  const { activeFolder, setActiveFolder } = useOutletContext(); // 🔗 from MainLayout
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
-  // now matches version 1 layout (All + select) but still works with your filter logic
-  const [activeFolder, setActiveFolder] = useState("All");
 
   const [mainSearch, setMainSearch] = useState("");
   const [selectedNoteId, setSelectedNoteId] = useState(null);
   const [draft, setDraft] = useState({
     title: "",
     content: "",
-    folder: "Inbox",
+    folder: fallbackFolderKey,
   });
   const [formatting, setFormatting] = useState(defaultFormatting);
   const [saving, setSaving] = useState(false);
@@ -117,39 +132,53 @@ export default function NotesPage({ user }) {
   }, [user]);
 
   // --- Handlers ---
-  const openNote = (noteId) => {
-    const note = notes.find((n) => n.id === noteId);
-    if (!note) return;
-    setSelectedNoteId(noteId);
-    setDraft({
-      title: note.title || "Untitled note",
-      content: note.content || "",
-      folder: note.folder || "Inbox",
-    });
-    setFormatting({ ...defaultFormatting, ...(note.formatting || {}) });
-  };
+const openNote = (noteId) => {
+  const note = notes.find((n) => n.id === noteId);
+  if (!note) return;
+  setSelectedNoteId(noteId);
+  setDraft({
+    title: note.title || "Untitled note",
+    content: note.content || "",
+    folder: canonicalFolder(note.folder),
+  });
+  setFormatting({ ...defaultFormatting, ...(note.formatting || {}) });
+};
+
+
 
   const closeEditor = () => {
     setSelectedNoteId(null);
-    setDraft({ title: "", content: "", folder: activeFolder });
+    setDraft({
+      title: "",
+      content: "",
+      folder: activeFolder === "All" ? fallbackFolderKey : activeFolder,
+    });
     setFormatting(defaultFormatting);
   };
 
   // handleCreate now matches version 1 layout (multiple create types),
   // but still uses your final-version Firestore + user logic.
-  const handleCreate = async (typeLabel = "Note") => {
+  const handleCreate = async (typeLabel = "Note", typeKey = "note") => {
+    if (typeKey === "calendar") {
+      navigate("/calendar");
+      return;
+    }
+
     if (!user || !user.uid) {
       setStatus("Error: Must be signed in to create a document.");
       return;
     }
 
-    const fallbackFolder = "Inbox";
-    const folder = activeFolder === "All" ? fallbackFolder : activeFolder;
+    const folder =
+      activeFolder === "All"
+        ? fallbackFolderKey
+        : canonicalFolder(activeFolder);
 
     const payload = {
       title: typeLabel === "Note" ? "New doc" : typeLabel,
       content: "",
       folder,
+
       formatting: defaultFormatting,
       type: typeLabel.toLowerCase(),
     };
@@ -192,8 +221,13 @@ export default function NotesPage({ user }) {
     if (!selectedNoteId) return;
     setSaving(true);
     try {
-      const payload = { ...draft, formatting };
+      const payload = {
+        ...draft,
+        folder: canonicalFolder(draft.folder),
+        formatting,
+      };
       await updateNoteFirestore(selectedNoteId, payload);
+
       setNotes((prev) =>
         prev.map((n) => (n.id === selectedNoteId ? { ...n, ...payload } : n))
       );
@@ -211,22 +245,42 @@ export default function NotesPage({ user }) {
     const query = mainSearch.toLowerCase().trim();
     return notes.filter((note) => {
       const folderMatch =
-        activeFolder === "All" || (note.folder || "Inbox") === activeFolder;
+        activeFolder === "All" ||
+        normalizeFolder(note.folder) === normalizeFolder(activeFolder);
+
       const text = `${note.title || ""} ${note.content || ""}`.toLowerCase();
       const searchMatch = !query || text.includes(query);
       return folderMatch && searchMatch;
     });
   }, [notes, activeFolder, mainSearch]);
 
-  const formatDate = (ms) => {
-    if (!ms) return "";
-    try {
-      const d = new Date(ms);
-      return d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
-    } catch {
-      return "";
-    }
-  };
+
+  const formatDate = (dateValue) => {
+  // 1. If date is missing/null, handle gracefully
+  if (!dateValue) return "";
+
+  let ms;
+
+  // 2. Check if it's a Firestore Timestamp (has a .toDate() method)
+  if (typeof dateValue === 'object' && typeof dateValue.toDate === 'function') {
+    ms = dateValue.toDate().getTime(); 
+  } 
+  // 3. Check if it's already a number (client-side Date.now())
+  else if (typeof dateValue === 'number') {
+    ms = dateValue;
+  } 
+  // 4. Fallback for unknown formats
+  else {
+    return ""; 
+  }
+
+  try {
+    const d = new Date(ms);
+    return d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  } catch (e) {
+    return "";
+  }
+};
 
   const updateDraftField = (field, value) => {
     setDraft((prev) => ({ ...prev, [field]: value }));
@@ -340,10 +394,13 @@ export default function NotesPage({ user }) {
       <div className="notes-header">
         <div className="header-left">
           <h1>Notes</h1>
-<button className="cta-new-wide" onClick={() => handleCreate("Note")}>
-  <span className="pill">NEW NOTE</span>
-  Write your next big idea...
-</button>
+          <button
+            className="cta-new-wide"
+            onClick={() => handleCreate("Note", "note")}
+          >
+            <span className="pill">NEW NOTE</span>
+            Write your next big idea...
+          </button>
 
         </div>
         <div className="header-actions">
@@ -370,10 +427,6 @@ export default function NotesPage({ user }) {
             </select>
           </div>
 
-          <button className="new-message" onClick={() => handleCreate("Message")}>
-            <FontAwesomeIcon icon={faPaperPlane} /> New message
-          </button>
-
           <div className="new-doc-dropdown">
             <button
               className="new-doc"
@@ -388,7 +441,14 @@ export default function NotesPage({ user }) {
                   <button
                     key={opt.key}
                     className="create-menu-item"
-                    onClick={() => handleCreate(opt.label)}
+                    onClick={() => {
+                      if (opt.key === "note") {
+                        handleCreate("Note", "note");
+                      } else if (opt.path) {
+                        navigate(opt.path);
+                        setCreateMenuOpen(false);
+                      }
+                    }}
                   >
                     {opt.label}
                   </button>
@@ -567,17 +627,28 @@ export default function NotesPage({ user }) {
                 onChange={(e) => updateDraftField("title", e.target.value)}
                 placeholder="Note title"
               />
-              <select
-                className="select"
-                value={draft.folder}
-                onChange={(e) => updateDraftField("folder", e.target.value)}
-              >
-                {folderOptions.map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
+<select
+  className="select"
+  value={draft.folder}
+  onChange={(e) => {
+    const value = canonicalFolder(e.target.value);
+    // update the note's folder field
+    updateDraftField("folder", value);
+    // ALSO move the workspace to that tab
+    setActiveFolder(value);
+  }}
+>
+  {folderOptions
+    .filter((f) => f.key !== "All") // 🔥 no Inbox, no All
+    .map((f) => (
+      <option key={f.key} value={f.key}>
+        {f.label}
+      </option>
+    ))}
+</select>
+
+
+
             </div>
             <textarea
               className="editor-textarea"
@@ -591,7 +662,7 @@ export default function NotesPage({ user }) {
                 color: formatting.color,
                 backgroundColor: formatting.highlight ? "#fffbe6" : "#fff",
               }}
-              placeholder="Start writing like in Google Docs — free type with your tools above."
+              placeholder="Start writing your thoughts... Freely type with your tools above."
             />
           </div>
         </div>
@@ -599,3 +670,8 @@ export default function NotesPage({ user }) {
     </>
   );
 }
+
+
+
+
+

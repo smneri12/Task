@@ -1,9 +1,8 @@
 // src/components/Sidebar.jsx
-import React from "react";
-import { Link, useLocation } from "react-router-dom"; 
+import React, { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faInbox,
   faUniversity,
   faBriefcase,
   faUser,
@@ -11,24 +10,26 @@ import {
   faSignOutAlt,
   faCalendar,
   faFolder,
-  faLayerGroup,            // 👈 NEW ICON FOR WORKSPACE
+  faLayerGroup,
+  faBook,
+  faCheck,
+  faListCheck, // <-- checklist icon for Tasks
 } from "@fortawesome/free-solid-svg-icons";
 import { signOut } from "firebase/auth";
-import { auth } from "../firebase"; 
+import { auth } from "../firebase";
 
 // --- STATIC DATA ---
 const folderOptions = [
-  { key: "Inbox", label: "Inbox", icon: faInbox },
   { key: "School", label: "School", icon: faUniversity },
-  { key: "Work", label: "Work", icon: faBriefcase },
+  { key: "Work", label: "Work", icon: faBriefcase }, // Work stays briefcase
   { key: "Personal", label: "Personal", icon: faUser },
+  { key: "All", label: "All", icon: faCheck }, // All -> check icon
 ];
 
 const mainNavLinks = [
-  { path: "/notes", label: "Notes", icon: faFolder },
-  { path: "/tasks", label: "Tasks", icon: faBriefcase },
+  { path: "/tasks", label: "Tasks", icon: faListCheck }, // Tasks -> checklist icon
   { path: "/calendar", label: "Calendar", icon: faCalendar },
-  { path: "/projects", label: "Projects", icon: faFolder },
+  { path: "/projects", label: "Projects", icon: faFolder }, // Projects stays folder
 ];
 
 export default function Sidebar({
@@ -38,11 +39,17 @@ export default function Sidebar({
   isDropdownOpen,
   setIsDropdownOpen,
 }) {
-  const location = useLocation(); 
-  
-  const profileEmail = user?.email || "test@example.com"; 
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [notesOpen, setNotesOpen] = useState(true);
+
+  const profileEmail = user?.email || "test@example.com";
   const profileName = user?.displayName || "Drew Miguel";
-  const profileInitials = profileName.split(" ").map(n => n[0]).join("") || "N";
+  const profileInitials =
+    profileName
+      .split(" ")
+      .map((n) => n[0])
+      .join("") || "N";
 
   return (
     <aside className="notes-sidebar">
@@ -55,39 +62,50 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* --- Folder chips (no more "Notes" pill above Inbox) --- */}
+      {/* --- Notes dropdown with folders --- */}
       <div className="sidebar-section">
-        <div className="folder-list">
-          {folderOptions.map((folder) => (
-            <button
-              key={folder.key}
-              className={`folder-chip ${
-                activeFolder === folder.key ? "active" : ""
-              }`}
-              onClick={() => setActiveFolder(folder.key)}
-            >
-              <FontAwesomeIcon icon={folder.icon} />
-              <span>{folder.label}</span>
-            </button>
-          ))}
-          <button
-            className={`folder-chip ${activeFolder === "All" ? "active" : ""}`}
-            onClick={() => setActiveFolder("All")}
-          >
-            <FontAwesomeIcon icon={faInbox} />
-            <span>All</span>
-          </button>
-        </div>
+        <button
+          className="sidebar-dropdown"
+          onClick={() => setNotesOpen((prev) => !prev)}
+        >
+          <div className="dropdown-label">
+            <FontAwesomeIcon icon={faBook} /> {/* Notes -> notebook icon */}
+            <span>Notes</span>
+          </div>
+          <FontAwesomeIcon
+            icon={faChevronDown}
+            className={notesOpen ? "rotated" : ""}
+          />
+        </button>
+        {notesOpen && (
+          <div className="folder-list">
+            {folderOptions.map((folder) => (
+              <button
+                key={folder.key}
+                className={`folder-chip ${
+                  activeFolder === folder.key ? "active" : ""
+                }`}
+                onClick={() => {
+                  setActiveFolder(folder.key);
+                  navigate("/notes"); // always go back to Notes page
+                }}
+              >
+                <FontAwesomeIcon icon={folder.icon} />
+                <span>{folder.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* --- Main App Navigation Links AS DROPDOWN --- */}
-      <div className="sidebar-section">
+      {/* --- Workspace Nav --- */}
+      <div className="sidebar-section workspace-section">
         <button
           className="sidebar-dropdown"
           onClick={() => setIsDropdownOpen((prev) => !prev)}
         >
           <div className="dropdown-label">
-            <FontAwesomeIcon icon={faLayerGroup} /> {/* 👈 changed icon */}
+            <FontAwesomeIcon icon={faLayerGroup} />
             <span>Workspace</span>
           </div>
           <FontAwesomeIcon

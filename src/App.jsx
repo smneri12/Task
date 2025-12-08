@@ -1,27 +1,32 @@
-// src/App.jsx
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 
+import "./assets/auth.css";
+
+
 import LoginPage from "./pages/LoginPage";
+import SignupPage from "./pages/Signup";   
 import NotesPage from "./pages/NotesPage";
-import TasksPage from "./pages/TasksPage"; 
-import MainLayout from "./components/MainLayout"; 
+import TasksPage from "./pages/TasksPage";
+import CalendarPage from "./pages/CalendarPage";
+import MainLayout from "./components/MainLayout";
+import ProjectsPage from "./pages/Projects";
 
 export default function App() {
-  const [user, setUser] = useState(undefined); 
+  const [user, setUser] = useState(undefined); // undefined = checking, null = logged out
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
     });
-    return unsubscribe; 
+    return unsubscribe;
   }, []);
 
-  if (user === undefined) { 
+  if (user === undefined) {
     return (
-      <div style={{textAlign:"center", paddingTop:"30vh", fontSize:20}}>
+      <div style={{ textAlign: "center", paddingTop: "30vh", fontSize: 20 }}>
         Loading...
       </div>
     );
@@ -30,20 +35,31 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Login Route */}
-        <Route path="/login" element={user ? <Navigate to="/notes" /> : <LoginPage />} />
+        {/* Auth pages */}
+        <Route
+          path="/login"
+          element={user ? <Navigate to="/notes" /> : <LoginPage />}
+        />
+        <Route
+          path="/signup"
+          element={user ? <Navigate to="/notes" /> : <SignupPage />}
+        />
 
-        {/* Protected Routes Group: Passes user object to the layout */}
-        <Route element={user ? <MainLayout user={user} /> : <Navigate to="/login" />}>
-            
-            {/* Renders the production pages */}
-            <Route path="/notes" element={<NotesPage user={user} />} />
-            <Route path="/tasks" element={<TasksPage user={user} />} />
-
+        {/* Protected layout + pages */}
+        <Route
+          element={user ? <MainLayout user={user} /> : <Navigate to="/login" />}
+        >
+          <Route path="/notes" element={<NotesPage user={user} />} />
+          <Route path="/tasks" element={<TasksPage user={user} />} />
+          <Route path="/calendar" element={<CalendarPage user={user} />} />
+          <Route path="/projects" element={<ProjectsPage user={user} />} />
         </Route>
 
-        {/* Default redirect */}
-        <Route path="*" element={<Navigate to={user ? "/notes" : "/login"} />} />
+        {/* Fallback */}
+        <Route
+          path="*"
+          element={<Navigate to={user ? "/notes" : "/login"} />}
+        />
       </Routes>
     </BrowserRouter>
   );
